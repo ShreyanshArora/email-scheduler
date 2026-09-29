@@ -14,6 +14,12 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
       - name: Configure SSH
         env:
           DEPLOY_KEY: ${{ secrets.EC2_SSH_KEY }}
