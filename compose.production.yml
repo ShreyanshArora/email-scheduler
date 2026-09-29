@@ -61,6 +61,7 @@ services:
     env_file: ${APP_ENV_FILE:-.env.production}
     environment: *api-env
     command: ["node", "dist/worker.js"]
+    stop_grace_period: 120s
     depends_on:
       migrate:
         condition: service_completed_successfully

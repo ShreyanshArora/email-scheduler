@@ -167,10 +167,13 @@ async function recoverInterrupted() {
   }
 }
 
+let stopping = false;
+let maintenanceTimer: ReturnType<typeof setTimeout>;
 async function maintain() {
+  if (stopping) return;
   try { await reconcileScheduled(); await recoverInterrupted(); }
   catch (error) { console.error("Queue recovery check failed:", error); }
-  finally { setTimeout(maintain, 30000).unref(); }
+  finally { if (!stopping) maintenanceTimer = setTimeout(maintain, 30000); maintenanceTimer?.unref(); }
 }
 
 async function main() {
@@ -186,8 +189,13 @@ async function main() {
   worker.on("failed", (job, error) =>
     console.error("Email job failed:", job?.id, error),
   );
-  setTimeout(maintain, 30000).unref();
+  maintenanceTimer = setTimeout(maintain, 30000);
+  maintenanceTimer.unref();
   async function shutdown() {
+    if (stopping) return;
+    stopping = true;
+    clearTimeout(maintenanceTimer);
+    console.log("Draining active email deliveries before shutdown");
     await worker.close();
     await emailQueue.close();
     await connection.quit();
