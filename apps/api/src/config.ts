@@ -1,9 +1,9 @@
 import "dotenv/config";
 if (
   process.env.NODE_ENV === "production" &&
-  (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === "replace-me")
+  (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32 || process.env.SESSION_SECRET.startsWith("replace-"))
 ) {
-  throw new Error("A unique SESSION_SECRET is required in production");
+  throw new Error("A unique SESSION_SECRET of at least 32 characters is required in production");
 }
 export const config = {
   port: Number(process.env.PORT ?? 4000),
