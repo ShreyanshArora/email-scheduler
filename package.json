@@ -1,0 +1,11 @@
+{
+  "name": "reachinbox-email-scheduler",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @reachinbox/api\" \"npm run dev -w @reachinbox/web\"",
+    "build": "npm run build --workspaces",
+    "db:migrate": "npm run db:migrate -w @reachinbox/api"
+  },
+  "devDependencies": { "concurrently": "^9.1.0" }
+}

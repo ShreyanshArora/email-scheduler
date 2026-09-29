@@ -1,0 +1,4 @@
+import { Client } from 'elasticsearch'; import { config } from './config'; import type { EmailRow } from './db';
+const client = new Client({ host: config.elastic }); const index = 'emails';
+export async function indexEmail(e: EmailRow) { try { await client.index({ index, type:'_doc', id:e.id, body:{ tenantId:e.tenant_id, recipient:e.recipient, subject:e.subject, body:e.body, sender:e.sender, status:e.status, scheduledAt:e.scheduled_at, sentAt:e.sent_at } }); } catch (err) { console.warn('Elasticsearch unavailable; indexing will retry on next state change'); } }
+export async function searchIds(tenantId:string, q:string) { try { const r:any = await client.search({ index, body:{ query:{ bool:{ filter:[{term:{tenantId}}], must:q ? [{multi_match:{query:q,fields:['recipient','subject','body','sender']}}] : [] } } } }); return r.hits.hits.map((h:any)=>h._id); } catch { return null; } }
