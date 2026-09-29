@@ -1,0 +1,30 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+      - name: Validate production Compose
+        run: APP_ENV_FILE=.env.production.example docker compose --env-file .env.production.example -f compose.production.yml --profile https config -q
+      - name: Build API container
+        run: docker build --target api -t outbox-api:ci .
+      - name: Build web container
+        run: docker build --target web -t outbox-web:ci .
