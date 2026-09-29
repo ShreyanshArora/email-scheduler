@@ -1,0 +1,9 @@
+{
+  "checkedAt": "2026-09-29T21:55:13.528Z",
+  "outcome": "passed",
+  "passed": [
+    "Early queue execution is delayed until DB due time, then sends exactly once",
+    "SIGTERM during active delivery drains SMTP and persists sent before exiting",
+    "Restart does not resend drained delivery"
+  ]
+}
