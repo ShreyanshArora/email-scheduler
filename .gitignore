@@ -6,3 +6,4 @@ dist
 apps/api/uploads
 
 .deploy.lock
+*.tsbuildinfo
