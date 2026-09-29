@@ -44,6 +44,8 @@ try {
   cookie=await register(); const tenant=tenants[0]; const secondCookie=await register();
   assert.equal((await fetch(base+'/api/emails')).status,401);
   passed('unauthenticated mailbox access is rejected');
+  assert.equal((await fetch(base+'/api/emails/schedule',{method:'POST',headers:{Cookie:cookie,Origin:'https://untrusted.example','Content-Type':'application/json'},body:'{}'})).status,403);
+  passed('cross-origin mutation is rejected before changing mail');
   const boundary={name:'boundary.txt',type:'text/plain',content:Buffer.alloc(5*1024*1024,65).toString('base64')};
   const exact=await schedule({attachments:[boundary]}); assert.equal(exact.count,1);
   const tooLarge=await fetch(base+'/api/emails/schedule',{method:'POST',headers:{Cookie:cookie,'Content-Type':'application/json','Idempotency-Key':randomUUID()},body:JSON.stringify({recipients:['test@example.test'],subject:'Too large',body:'Size check',sender:process.env.SMTP_USER,startsAt:new Date().toISOString(),attachments:[{...boundary,content:Buffer.alloc(5*1024*1024+1).toString('base64')}]})});
