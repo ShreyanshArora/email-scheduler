@@ -1076,3 +1076,82 @@ button:disabled {
 .date-picker svg {
   display: none;
 }
+/* Mailbox controls, recipient chips, rich compose and attachment cards. */
+.filter-wrap { position: relative; margin-top: 3px; }
+.filter-menu { position: absolute; right: 0; top: 38px; z-index: 40; width: 235px; padding: 14px; background: #fff; border: 1px solid #e4e8ec; border-radius: 12px; box-shadow: 0 8px 30px #2029391c; }
+.filter-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 15px; }
+.filter-menu > button { display: flex; justify-content: space-between; width: 100%; padding: 10px; border: 0; border-radius: 7px; background: #fff; color: #4c5a6d; text-align: left; font-size: 14px; }
+.filter-menu > button:hover, .filter-menu > button.selected { background: #e2f7e9; color: #07883b; }
+.filter-menu > button span { color: #8994a2; }
+.star-filter { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 12px 7px; border-top: 1px solid #edf0f2; margin-top: 8px; }
+.star-filter input { accent-color: #05ac41; }
+.filter-menu > .filter-done { justify-content: center; color: #04a93c; border: 1px solid #05b746; border-radius: 22px; }
+.folder-heading { padding: 0 20px 12px; color: #6b7786; font-size: 14px; }
+.notice { margin: 0 18px 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; background: #f0faf4; border-radius: 8px; font-size: 13px; color: #21854b; }
+.row-time { margin-left: auto; flex: none; font-size: 11px; color: #8f9bac; }
+.load-more { display: block; margin: 22px auto; border: 1px solid #cbd9cf; border-radius: 20px; padding: 9px 20px; background: white; color: #168b41; }
+.to-line { height: auto; min-height: 55px; padding: 8px 0; }
+.to-entry { overflow: visible; flex-wrap: wrap; gap: 5px; }
+.to-entry input { flex: 1 1 155px; padding: 7px 0; }
+.recipient-chips { flex-wrap: wrap; overflow: visible; }
+.recipient-chips span { display: inline-flex; align-items: center; max-width: none; white-space: nowrap; }
+.recipient-chips span button { border: 0; padding: 0 0 0 6px; background: transparent; color: #379e58; font-size: 15px; }
+.more-recipients { border: 1px solid #02b748; border-radius: 22px; background: #e4f9eb; font-size: 12px; padding: 3px 9px; }
+.editor-shell { height: auto; min-height: max(350px, calc(100vh - 335px)); cursor: text; }
+.rich-editor { min-height: 46px; width: 100%; outline: none; line-height: 1.65; font-size: 16px; overflow-wrap: anywhere; }
+.rich-editor:empty::before { content: attr(data-placeholder); color: #aaa; pointer-events: none; }
+.rich-editor p, .rich-editor div { margin: 0; }
+.rich-editor blockquote, .rich-message blockquote { border-left: 3px solid #dedfe0; margin: 8px 0; padding-left: 16px; color: #697586; }
+.editor-toolbar { cursor: default; flex-wrap: nowrap; overflow-x: auto; margin-top: 10px; }
+.editor-toolbar button { flex: none; }
+.editor-toolbar select { flex: none; width: 44px; border: 0; background: white; color: #8f9498; font-size: 15px; outline: 0; }
+.attachments { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 18px; padding-bottom: 20px; }
+.attachment-card { width: 210px; max-width: 100%; background: #f6f8f9; border-radius: 10px; overflow: hidden; position: relative; color: #344254; text-decoration: none; }
+.attachment-card > img { display: block; width: 100%; height: 115px; object-fit: cover; }
+.attachment-card > div:last-of-type { padding: 10px; }
+.attachment-card strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
+.attachment-card small { display: block; color: #8a94a2; margin-top: 4px; font-size: 12px; }
+.attachment-file { height: 80px; display: grid; place-items: center; color: #849b8a; background: #edf4ef; }
+.attachment-remove { position: absolute; right: 4px; top: 4px; background: white; border-radius: 50%; }
+.scheduled-note button { border: 0; color: #647585; background: transparent; text-decoration: underline; font-size: 12px; }
+.detail-header { height: 72px; border-bottom: 0; }
+.detail-header h1 { font-size: 24px; min-width: 0; }
+.detail-actions { margin-left: auto; display: flex; align-items: center; gap: 14px; flex: none; }
+.detail-divider { height: 32px; width: 1px; background: #d0d5dd; margin: 0 5px; }
+.detail-content { max-width: 1060px; margin-top: 18px; gap: 16px; }
+.detail-body { font-size: 16px; line-height: 1.7; margin-top: 28px; }
+.rich-message { white-space: normal; overflow-wrap: anywhere; }
+.rich-message p { margin: 0 0 18px; }
+.detail-to { font-size: 13px; }
+.detail-to summary { cursor: pointer; }
+.detail-to p { font-size: 12px; line-height: 1.7; }
+.detail-meta { flex-wrap: wrap; font-size: 15px; }
+.detail-meta span { overflow-wrap: anywhere; }
+.detail-meta time { font-size: 13px; }
+.delivery-info { margin-top: 30px; font-size: 12px; }
+@media (max-width: 680px) {
+  .detail-header { height: 64px; gap: 8px; }
+  .detail-header h1 { font-size: 18px; }
+  .detail-actions { gap: 3px; }
+  .detail-actions .icon-button { padding: 4px; }
+  .detail-actions svg { width: 18px; height: 18px; }
+  .detail-actions .avatar, .detail-divider { display: none; }
+  .detail-content { padding: 0 16px; gap: 12px; margin-top: 14px; }
+  .sender-avatar { width: 32px; height: 32px; font-size: 15px; }
+  .detail-meta { font-size: 13px; }
+  .detail-meta time { font-size: 12px; }
+  .detail-body { font-size: 15px; margin-top: 22px; }
+  .row-time { display: none; }
+  .recipient-chips span { max-width: 230px; font-size: 12px; }
+  .to-entry input { flex-basis: 130px; }
+  .file-indicator { padding-left: 0; font-size: 11px; }
+  .editor-shell { min-height: 340px; }
+  .rich-editor { font-size: 15px; }
+  .editor-toolbar { padding: 0 6px; gap: 1px; }
+  .editor-toolbar span { margin: 0 3px; }
+  .send-later-popover { width: min(330px, calc(100vw - 20px)); }
+  .filter-menu { right: -32px; }
+  .notice { margin: 0 12px 8px; font-size: 12px; }
+}
+
+.compose-error { margin: 0 auto 10px; width: min(1020px, calc(100% - 40px)); background: #fff4f2; border-radius: 8px; padding: 10px 14px; }

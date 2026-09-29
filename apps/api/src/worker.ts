@@ -55,6 +55,7 @@ async function notifyLimit(tenantId: string, sender: string) {
     const response = await fetch(tenant.slack_webhook_url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(10000),
       body: JSON.stringify({
         text: `ReachInbox: ${sender} reached its hourly email limit. Remaining emails were deferred.`,
       }),
@@ -71,10 +72,11 @@ async function processEmail(job: { data: EmailJob }) {
   const {
     rows: [claimed],
   } = await db.query<EmailRow>(
-    "UPDATE emails SET status='sending', sending_started_at=now() WHERE id=$1 AND status='scheduled' AND scheduled_at<=now() RETURNING *",
+    "UPDATE emails SET status='sending', sending_started_at=now() WHERE id=$1 AND status='scheduled' AND mailbox<>'trash' AND scheduled_at<=now() RETURNING *",
     [job.data.emailId],
   );
   if (!claimed) return;
+  let smtpAttempted = false;
 
   try {
     const deferMs = await reserveSend(
@@ -100,17 +102,28 @@ async function processEmail(job: { data: EmailJob }) {
         claimed.id,
         deferred.id,
       ]);
+      await indexEmail({ ...claimed, status: "scheduled", scheduled_at: nextAt });
       await notifyLimit(claimed.tenant_id, claimed.sender);
       return;
     }
 
     const waitMs = await reserveSendGap();
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-    const info = await smtpFor(claimed.sender).sendMail({
+    const { rows: [campaign] } = await db.query("SELECT attachments FROM campaigns WHERE id=$1", [claimed.campaign_id]);
+    const transport = smtpFor(claimed.sender);
+    await db.query("UPDATE emails SET send_attempted_at=now(),send_attempts=send_attempts+1 WHERE id=$1", [claimed.id]);
+    smtpAttempted = true;
+    const info = await transport.sendMail({
       from: claimed.sender,
       to: claimed.recipient,
       subject: claimed.subject,
       text: claimed.body,
+      html: claimed.body_html || undefined,
+      attachments: (campaign?.attachments ?? []).map((file: { name: string; type: string; content: string }) => ({
+        filename: file.name, contentType: file.type, content: Buffer.from(file.content, "base64"),
+      })),
+      disableFileAccess: true,
+      disableUrlAccess: true,
       headers: { "X-ReachInbox-Email-ID": claimed.id },
     });
     const {
@@ -122,6 +135,12 @@ async function processEmail(job: { data: EmailJob }) {
     await indexEmail(sent);
     if (deferMs === -1) await notifyLimit(claimed.tenant_id, claimed.sender);
   } catch (error) {
+    if (!smtpAttempted) {
+      // No SMTP request happened, so infrastructure failures can safely retry.
+      await db.query("UPDATE emails SET status='scheduled',sending_started_at=NULL,scheduled_at=GREATEST(scheduled_at,now()+interval '5 seconds'),error=$2 WHERE id=$1 AND status IN ('sending','scheduled')",
+        [claimed.id, error instanceof Error ? error.message : String(error)]);
+      throw error;
+    }
     // A transport error can occur after SMTP accepted the message. Never auto-retry
     // an ambiguous send: that would risk delivering the same email twice.
     const {
@@ -137,9 +156,21 @@ async function processEmail(job: { data: EmailJob }) {
 
 async function recoverInterrupted() {
   const { rows } = await db.query<EmailRow>(
-    "UPDATE emails SET status='failed',error='Delivery interrupted; outcome uncertain. Not retried automatically.' WHERE status='sending' AND (sending_started_at IS NULL OR sending_started_at<now()-interval '2 minutes') RETURNING *",
+    "SELECT * FROM emails WHERE status='sending' AND (sending_started_at IS NULL OR sending_started_at<now()-interval '2 minutes')",
   );
-  await Promise.all(rows.map(indexEmail));
+  for (const row of rows) {
+    const job = row.bull_job_id && await emailQueue.getJob(row.bull_job_id);
+    if (job && await job.getState() === "active") continue;
+    const { rows: [failed] } = await db.query<EmailRow>(
+      "UPDATE emails SET status='failed',error='Delivery interrupted; outcome uncertain. Not retried automatically.' WHERE id=$1 AND status='sending' RETURNING *", [row.id]);
+    if (failed) await indexEmail(failed);
+  }
+}
+
+async function maintain() {
+  try { await reconcileScheduled(); await recoverInterrupted(); }
+  catch (error) { console.error("Queue recovery check failed:", error); }
+  finally { setTimeout(maintain, 30000).unref(); }
 }
 
 async function main() {
@@ -155,7 +186,16 @@ async function main() {
   worker.on("failed", (job, error) =>
     console.error("Email job failed:", job?.id, error),
   );
-  setTimeout(() => recoverInterrupted().catch(console.error), 130000).unref();
+  setTimeout(maintain, 30000).unref();
+  async function shutdown() {
+    await worker.close();
+    await emailQueue.close();
+    await connection.quit();
+    await db.end();
+    process.exit(0);
+  }
+  process.once("SIGTERM", () => { void shutdown(); });
+  process.once("SIGINT", () => { void shutdown(); });
 }
 
 main().catch((error) => {

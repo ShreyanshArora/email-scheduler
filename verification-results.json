@@ -1,0 +1,14 @@
+{
+  "checkedAt": "2026-09-29T17:01:42.392Z",
+  "passed": [
+    "unauthenticated mailbox access is rejected",
+    "5 MB attachment accepted; 5 MB + 1 byte rejected",
+    "archive, trash cancellation, restore/requeue, starred filtering and tenant isolation",
+    "real HTML + attachment SMTP delivery, sanitized HTML, download, and cross-worker spacing",
+    "duplicate queue job does not trigger a second SMTP attempt",
+    "two-worker restart preserves future job and sends once from a second sender",
+    "committed email with missing Redis job repairs automatically without a restart",
+    "1000 delayed jobs persisted, paginated and counted in 730 ms",
+    "Slack disconnect and logout revoke local connection/session"
+  ]
+}

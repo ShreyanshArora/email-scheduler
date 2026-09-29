@@ -1,1 +1,1 @@
-{"root":["./src/main.tsx"],"version":"5.9.3"}
+{"root":["./src/compose.tsx","./src/detail.tsx","./src/login.tsx","./src/richeditor.tsx","./src/sidebar.tsx","./src/main.tsx","./src/shared.tsx"],"version":"5.9.3"}

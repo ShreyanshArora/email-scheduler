@@ -11,6 +11,7 @@ function document(email: EmailRow) {
     body: email.body,
     sender: email.sender,
     status: email.status,
+    mailbox: email.mailbox,
     scheduledAt: email.scheduled_at,
     sentAt: email.sent_at,
   };

@@ -1,5 +1,6 @@
 import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
+import sanitizeHtml from "sanitize-html";
 import session from "express-session";
 import { randomUUID } from "crypto";
 import { OAuth2Client } from "google-auth-library";
@@ -24,7 +25,7 @@ declare module "express-session" {
 const app = express();
 app.set("trust proxy", 1);
 app.use(cors({ origin: config.webUrl, credentials: true }));
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "8mb" }));
 app.use(
   session({
     name: "reachinbox.sid",
@@ -242,7 +243,7 @@ app.get("/api/settings", required, (_req, res) => {
   }
   const senders = Array.from(
     new Set(
-      [process.env.SMTP_USER, ...configuredSenders].filter(
+      [process.env.SMTP_USER, ...(process.env.SMTP_SENDERS ?? "").split(",").map(value => value.trim()).filter(Boolean), ...configuredSenders].filter(
         (value): value is string => Boolean(value),
       ),
     ),
@@ -283,6 +284,7 @@ app.get("/auth/slack/callback", required, async (req, res, next) => {
       throw new Error("Invalid Slack OAuth state");
     req.session.slackState = undefined;
     await saveSession(req);
+    if (req.query.error) return res.redirect(`${config.webUrl}/?authError=${encodeURIComponent("Slack connection was cancelled or rejected. Try Connect Slack again.")}`);
     const params = new URLSearchParams({
       client_id: process.env.SLACK_CLIENT_ID!,
       client_secret: process.env.SLACK_CLIENT_SECRET!,
@@ -315,7 +317,8 @@ app.get("/auth/slack/callback", required, async (req, res, next) => {
     );
     res.redirect(config.webUrl);
   } catch (error) {
-    next(error);
+    console.error("Slack OAuth:", error);
+    res.redirect(`${config.webUrl}/?authError=${encodeURIComponent("Slack authorization failed. Check the registered callback URL and try connecting again.")}`);
   }
 });
 
@@ -341,6 +344,8 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
       startsAt,
       delayMs = 0,
       hourlyLimit = config.hourlyLimit,
+      bodyHtml,
+      attachments = [],
     } = req.body;
     const key = req.header("Idempotency-Key");
     if (!key || key.length > 200)
@@ -375,6 +380,7 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
       return res
         .status(400)
         .json({ error: "One or more recipient addresses are invalid" });
+    const uniqueRecipients = Array.from(new Set((recipients as string[]).map(value => value.trim().toLowerCase())));
     const base = new Date(startsAt).getTime();
     const gap = Number(delayMs);
     const limit = Number(hourlyLimit);
@@ -391,6 +397,32 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
         .status(400)
         .json({ error: "Invalid start time, delay, or hourly limit" });
 
+    const attachmentLimit = 5 * 1024 * 1024;
+    if (!Array.isArray(attachments) || attachments.length > 20)
+      return res.status(400).json({ error: "Choose at most 20 attachments, up to 5 MB total." });
+    let totalBytes = 0;
+    const safeAttachments = [];
+    for (const file of attachments) {
+      if (!file || typeof file.name !== "string" || !file.name.trim() || file.name.length > 255 ||
+          typeof file.content !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(file.content))
+        return res.status(400).json({ error: "Invalid attachment." });
+      const content = Buffer.from(file.content, "base64");
+      totalBytes += content.length;
+      if (totalBytes > attachmentLimit)
+        return res.status(413).json({ error: "Attachments must be 5 MB or less in total." });
+      safeAttachments.push({ name: file.name.replace(/[\\/\r\n]/g, "_"),
+        type: typeof file.type === "string" && /^[\w.+-]+\/[\w.+-]+$/.test(file.type) ? file.type : "application/octet-stream",
+        size: content.length, content: content.toString("base64") });
+    }
+    if (typeof bodyHtml === "string" && bodyHtml.length > 200000)
+      return res.status(400).json({ error: "Email body is too long." });
+    const cleanHtml = typeof bodyHtml === "string" ? sanitizeHtml(bodyHtml, {
+      allowedTags: ["p", "br", "div", "span", "b", "strong", "i", "em", "u", "s", "strike", "blockquote", "ul", "ol", "li", "h1", "h2", "h3", "a", "font"],
+      allowedAttributes: { "*": ["style"], a: ["href"], font: ["size"] },
+      allowedStyles: { "*": { "text-align": [/^(left|center|right|justify)$/], "font-size": [/^\d+(px|em|rem|%)$/] } },
+      allowedSchemes: ["https", "http", "mailto"],
+    }) : null;
+
     const client = await db.connect();
     let emails: EmailRow[] = [];
     let idempotent = false;
@@ -398,8 +430,8 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
       await client.query("BEGIN");
       const campaignId = randomUUID();
       const inserted = await client.query(
-        "INSERT INTO campaigns(id,tenant_id,idempotency_key) VALUES($1,$2,$3) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id",
-        [campaignId, req.session.tenantId, key],
+        "INSERT INTO campaigns(id,tenant_id,idempotency_key,attachments) VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id",
+        [campaignId, req.session.tenantId, key, JSON.stringify(safeAttachments)],
       );
       if (!inserted.rows.length) {
         idempotent = true;
@@ -409,12 +441,12 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
         );
         emails = existing.rows;
       } else {
-        for (const [index, recipient] of recipients.entries()) {
+        for (const [index, recipient] of uniqueRecipients.entries()) {
           const scheduledAt = new Date(base + index * gap);
           const {
             rows: [email],
           } = await client.query<EmailRow>(
-            "INSERT INTO emails(id,tenant_id,campaign_id,recipient,subject,body,sender,hourly_limit,scheduled_at,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
+            "INSERT INTO emails(id,tenant_id,campaign_id,recipient,subject,body,sender,hourly_limit,scheduled_at,status,body_html) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *",
             [
               randomUUID(),
               req.session.tenantId,
@@ -426,6 +458,7 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
               limit,
               scheduledAt,
               "scheduled",
+              cleanHtml,
             ],
           );
           emails.push(email);
@@ -440,6 +473,7 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
     }
 
     for (const email of emails) {
+      if (email.status !== "scheduled" || email.mailbox === "trash") continue;
       if (email.bull_job_id && (await emailQueue.getJob(email.bull_job_id)))
         continue;
       const job = await emailQueue.add(
@@ -483,8 +517,16 @@ app.get("/api/emails", required, async (req, res, next) => {
       .trim()
       .slice(0, 200);
     const ids = query ? await searchIds(req.session.tenantId!, query) : [];
-    let sql = "SELECT * FROM emails WHERE tenant_id=$1";
+    const mailbox = String(req.query.mailbox ?? "inbox");
+    if (!["inbox", "all", "archived", "trash"].includes(mailbox))
+      return res.status(400).json({ error: "Invalid mailbox filter" });
+    let sql = `SELECT emails.*, COALESCE((SELECT jsonb_agg(a - 'content') FROM campaigns c,
+      jsonb_array_elements(c.attachments) a WHERE c.id=emails.campaign_id),'[]'::jsonb) AS attachments
+      FROM emails WHERE tenant_id=$1`;
     const values: unknown[] = [req.session.tenantId];
+    if (mailbox === "all") sql += " AND mailbox<> 'trash'";
+    else { values.push(mailbox); sql += ` AND mailbox=$${values.length}`; }
+    if (req.query.starred === "true") sql += " AND starred=true";
     if (statuses.length) {
       values.push(statuses);
       sql += ` AND status=ANY($${values.length})`;
@@ -495,12 +537,73 @@ app.get("/api/emails", required, async (req, res, next) => {
       values.push(ids ?? []);
       sql += ` AND (id=ANY($${values.length}::uuid[]) OR recipient ILIKE $${textIndex} OR subject ILIKE $${textIndex} OR body ILIKE $${textIndex} OR sender ILIKE $${textIndex})`;
     }
-    sql += " ORDER BY scheduled_at DESC,id LIMIT 500";
+    const offset = Math.max(0, Math.min(1000000, Number(req.query.offset) || 0));
+    values.push(offset);
+    sql += ` ORDER BY scheduled_at DESC,id LIMIT 100 OFFSET $${values.length}`;
     const { rows } = await db.query<EmailRow>(sql, values);
     res.json(rows);
   } catch (error) {
     next(error);
   }
+});
+
+app.get("/api/email-counts", required, async (req, res, next) => {
+  try {
+    const { rows: [counts] } = await db.query(`SELECT
+      count(*) FILTER (WHERE mailbox='inbox' AND status IN ('scheduled','sending'))::int AS scheduled,
+      count(*) FILTER (WHERE mailbox='inbox' AND status IN ('sent','failed'))::int AS sent,
+      count(*) FILTER (WHERE mailbox<>'trash')::int AS all,
+      count(*) FILTER (WHERE mailbox='archived')::int AS archived,
+      count(*) FILTER (WHERE mailbox='trash')::int AS trash
+      FROM emails WHERE tenant_id=$1`, [req.session.tenantId]);
+    res.json(counts);
+  } catch (error) { next(error); }
+});
+
+app.patch("/api/emails/:id/mailbox", required, async (req, res, next) => {
+  try {
+    const mailbox = req.body.mailbox;
+    if (!["inbox", "archived", "trash"].includes(mailbox))
+      return res.status(400).json({ error: "Invalid mailbox." });
+    const { rows: [email] } = await db.query<EmailRow>(
+      "UPDATE emails SET mailbox=$1 WHERE id=$2 AND tenant_id=$3 AND ($1<>'trash' OR status<>'sending') RETURNING *",
+      [mailbox, req.params.id, req.session.tenantId]);
+    if (!email) return res.status(409).json({ error: "Email not found or currently sending. Refresh and try again." });
+    if (mailbox === "trash") {
+      const job = email.bull_job_id && await emailQueue.getJob(email.bull_job_id);
+      if (job) await job.remove().catch(() => {});
+    } else if (email.status === "scheduled") {
+      // A restored scheduled email needs a new job if its original was cancelled.
+      const existing = email.bull_job_id && await emailQueue.getJob(email.bull_job_id);
+      const state = existing && await existing.getState();
+      if (!state || ["completed", "failed", "unknown"].includes(state)) {
+        const job = await emailQueue.add("send", { emailId: email.id }, {
+          jobId: `${email.id}-restored-${randomUUID()}`,
+          delay: Math.max(0, new Date(email.scheduled_at).getTime() - Date.now()),
+        });
+        await db.query("UPDATE emails SET bull_job_id=$2 WHERE id=$1", [email.id, job.id]);
+      }
+    }
+    await indexEmails([email]);
+    res.json(email);
+  } catch (error) { next(error); }
+});
+
+app.get("/api/emails/:id/attachments/:index", required, async (req, res, next) => {
+  try {
+    const index = Number(req.params.index);
+    if (!Number.isInteger(index) || index < 0) return res.status(404).end();
+    const { rows: [row] } = await db.query(
+      "SELECT c.attachments FROM emails e JOIN campaigns c ON c.id=e.campaign_id WHERE e.id=$1 AND e.tenant_id=$2",
+      [req.params.id, req.session.tenantId]);
+    const file = row?.attachments[index];
+    if (!file) return res.status(404).end();
+    res.setHeader("Content-Type", file.type);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    const disposition = req.query.preview === "1" && ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) ? "inline" : "attachment";
+    res.setHeader("Content-Disposition", `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name)}`);
+    res.send(Buffer.from(file.content, "base64"));
+  } catch (error) { next(error); }
 });
 
 app.patch("/api/emails/:id/star", required, async (req, res, next) => {
@@ -522,7 +625,8 @@ app.patch("/api/emails/:id/star", required, async (req, res, next) => {
 
 app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error(error);
-  res.status(500).json({ error: "Internal server error" });
+  const status = (error as Error & { status?: number }).status;
+  res.status(status === 413 ? 413 : 500).json({ error: status === 413 ? "Attachments must be 5 MB or less in total." : "Internal server error" });
 });
 
 async function main() {

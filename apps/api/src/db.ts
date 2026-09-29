@@ -7,6 +7,9 @@ export type EmailRow = {
   recipient: string;
   subject: string;
   body: string;
+  body_html: string | null;
+  mailbox: "inbox" | "archived" | "trash";
+  campaign_id: string | null;
   sender: string;
   hourly_limit: number;
   scheduled_at: Date;

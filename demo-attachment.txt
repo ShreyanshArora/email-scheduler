@@ -1,0 +1,2 @@
+Outbox scheduler attachment test
+This is a harmless Ethereal-only demo attachment.

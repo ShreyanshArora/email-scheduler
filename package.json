@@ -1,13 +1,21 @@
 {
   "name": "reachinbox-email-scheduler",
   "private": true,
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "concurrently \"npm run dev -w @reachinbox/api\" \"npm run worker -w @reachinbox/api\" \"npm run dev -w @reachinbox/web\"",
     "build": "npm run build --workspaces",
     "db:migrate": "npm run db:migrate -w @reachinbox/api",
     "demo:seed": "npm run demo:seed -w @reachinbox/api",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "verify:full": "node scripts/full-check.mjs",
+    "demo:populate": "node scripts/populate-demo.mjs",
+    "check:deploy": "node scripts/check-deploy.mjs",
+    "verify:containers": "node scripts/container-check.mjs"
   },
-  "devDependencies": { "concurrently": "^9.1.0" }
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
 }

@@ -9,7 +9,7 @@ export async function reconcileScheduled() {
     bull_job_id: string | null;
     scheduled_at: Date;
   }>(
-    "SELECT id,bull_job_id,scheduled_at FROM emails WHERE status='scheduled' ORDER BY scheduled_at",
+    "SELECT id,bull_job_id,scheduled_at FROM emails WHERE status='scheduled' AND mailbox<>'trash' ORDER BY scheduled_at",
   );
   let repaired = 0;
   for (const row of rows) {
@@ -17,11 +17,14 @@ export async function reconcileScheduled() {
       row.bull_job_id && (await emailQueue.getJob(row.bull_job_id));
     const state = existing && (await existing.getState());
     if (state && !["completed", "failed", "unknown"].includes(state)) continue;
+    const recoveredId = `${row.id}-recovered-${new Date(row.scheduled_at).getTime()}`;
+    const previous = await emailQueue.getJob(recoveredId);
+    if (previous && ["completed", "failed"].includes(await previous.getState())) await previous.remove().catch(() => {});
     const job = await emailQueue.add(
       "send",
       { emailId: row.id },
       {
-        jobId: `${row.id}-recovered-${Date.now()}`,
+        jobId: recoveredId,
         delay: Math.max(0, new Date(row.scheduled_at).getTime() - Date.now()),
       },
     );

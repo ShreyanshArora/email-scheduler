@@ -19,6 +19,9 @@ export type Email = {
   recipient: string;
   subject: string;
   body: string;
+  body_html: string | null;
+  mailbox: "inbox" | "archived" | "trash";
+  attachments: { name: string; size: number; type: string }[];
   sender: string;
   scheduled_at: string;
   sent_at: string | null;
@@ -27,7 +30,7 @@ export type Email = {
   preview_url: string | null;
   starred: boolean;
 };
-export type Folder = "scheduled" | "sent";
+export type Folder = "scheduled" | "sent" | "all" | "archived" | "trash";
 export type View = Folder | "compose" | "detail";
 
 export async function api<T>(
@@ -60,7 +63,11 @@ type IconName =
   | "filter"
   | "refresh"
   | "star"
-  | "calendar";
+  | "calendar"
+  | "archive"
+  | "trash"
+  | "restore"
+  | "close";
 export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
   const shapes: Record<IconName, ReactNode> = {
     clock: (
@@ -101,6 +108,10 @@ export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
       </>
     ),
     star: <path d="m12 2 3.1 6.4 7 .9-5 5 .9 7-6-3.3-6 3.3.9-7-5-5 7-.9z" />,
+    archive: <><path d="M4 7h16v14H4zM3 3h18v4H3zM9 11h6" /></>,
+    trash: <><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></>,
+    restore: <><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6" /></>,
+    close: <path d="m6 6 12 12M18 6 6 18" />,
     calendar: (
       <>
         <rect x="3" y="5" width="18" height="16" rx="2" />

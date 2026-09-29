@@ -1,98 +1,171 @@
-# ReachInbox Email Scheduler
+# Outbox Labs · Email Scheduler
 
-An Express/TypeScript API and React dashboard for scheduling fake SMTP email through BullMQ. PostgreSQL holds email state, Redis holds delayed jobs and sessions, and Elasticsearch indexes emails for search. The dashboard follows the supplied Outbox Labs Figma's inbox, sidebar, and compose layouts.
+Express + TypeScript, React + TypeScript, PostgreSQL, Redis/BullMQ, Elasticsearch and Ethereal SMTP. The UI follows the supplied ONB Figma: login, Scheduled/Sent inbox, full-page compose, Send Later popover, and message detail. Custom CSS implements the design and responsive layouts.
 
-## Run locally
+## Start locally
 
-Requirements: Node.js 22+ and Docker Desktop. Google OAuth and Slack OAuth need their own app credentials for those optional sign-in/notification flows. Email/password sign-in works locally without either OAuth app.
-
-1. Copy `apps/api/.env.example` to `apps/api/.env` and fill the credentials below. Use a random 32-byte `SESSION_SECRET`.
-2. `docker compose up -d` starts PostgreSQL, Redis, and Elasticsearch. Redis uses append-only persistence.
-3. `npm install`
-4. `npm run db:migrate`
-5. `npm run dev` starts the API, a separate BullMQ worker, and Vite.
-
-Open [the dashboard](http://localhost:5173). Create an account with email/password or sign in with Google. For a reproducible local demo, run `npm run demo:seed` and use **demo-ui-check@example.test** / **TemporaryDemo!2026**. The seed command only accepts a local database and refuses production; rerun it after resetting the database. After signing in, [the live BullMQ board](http://localhost:4000/admin/queues) shows waiting, delayed, active, completed, and failed jobs. The board uses the same login session. `GET /health` checks PostgreSQL and Redis.
-
-For separate processes, use `npm run start -w @reachinbox/api` after `npm run build`, `npm run worker -w @reachinbox/api`, and `npm run dev -w @reachinbox/web`. Keep the worker running to send due jobs.
-
-## Deploy with Docker Compose
-
-Copy [`.env.production.example`](.env.production.example) to `.env.production` and replace every placeholder with production values. Use a URL-safe strong `POSTGRES_PASSWORD`, a unique random `SESSION_SECRET`, a real `PUBLIC_URL` such as `https://outbox.example.com`, and Ethereal credentials. Register `${PUBLIC_URL}/auth/google/callback` and `${PUBLIC_URL}/auth/slack/callback` in the corresponding OAuth apps. Put an HTTPS reverse proxy in front of port `WEB_PORT` (default 8080); the application uses secure cookies in production. The production Compose file keeps PostgreSQL, Redis, and Elasticsearch on its private Docker network and persists their data in volumes.
-
-Run:
+Use Node.js 22+ and Docker Desktop.
 
 ```sh
-docker compose --env-file .env.production -f compose.production.yml up --build -d
-docker compose --env-file .env.production -f compose.production.yml ps
+npm install
+cp apps/api/.env.example apps/api/.env  # only on first setup; preserve existing credentials
+# Fill the OAuth, SMTP, and session values in apps/api/.env.
+docker compose up -d
+npm run db:migrate
+npm run demo:seed
+npm run dev
 ```
 
-The one-shot migration runs before the API and worker. Nginx serves the built React app and forwards `/api`, `/auth`, `/admin`, and `/health` to Express. Test `https://outbox.example.com/health`, then create an account and run the manual walkthrough below. On any hosting platform, deploy the API and worker as separate long-lived processes using the same PostgreSQL and Redis instances. Do not scale the migration service as a worker.
+Open http://localhost:5173. Local demo login:
 
-## Credentials and senders
+- Email: `demo-ui-check@example.test`
+- Password: `TemporaryDemo!2026`
 
-- **Email/password:** The login card also has a create-account link. Passwords are salted and hashed with scrypt; sessions are held in Redis. To link Google to an existing password account, sign in with the password first and choose **Connect Google** from the account menu. Google cannot silently take over an existing password account with the same email.
-- **Google:** Create a Web OAuth client and register `http://localhost:4000/auth/google/callback`. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL`. Login uses Google's real authorization code and verified ID token. There is no mock login.
-- **Ethereal:** Create a mailbox at [ethereal.email](https://ethereal.email). Set `SMTP_USER` and `SMTP_PASS`; this account can send fake test mail with different From addresses. For distinct Ethereal credentials per sender, set `SMTP_ACCOUNTS_JSON` to a JSON object keyed by lowercase sender address, for example `{"sales@example.test":{"user":"mailbox@ethereal.email","pass":"..."}}`. Ethereal never delivers to a real recipient inbox. Once Sent, open the message and click **Open Ethereal email preview** to verify its contents.
-- **Slack:** Create a Slack app with the `incoming-webhook` OAuth scope, register `http://localhost:4000/auth/slack/callback`, and set `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, and `SLACK_CALLBACK_URL`. The user selects a channel during **Connect Slack**. The backend stores that workspace's webhook per user and POSTs to it when the sender's hourly limit is reached. Disconnect clears the stored connection; reconnecting takes effect without a restart. No connection means no notification and no send failure.
+`demo:seed` is explicit, development-only, and refuses a remote database or `NODE_ENV=production`. It resets this one local demo account's password. It is never run by production startup. Create your own account with email/password or use Google login.
 
-The local `.env` is ignored by Git. Do not commit OAuth secrets, Ethereal passwords, session secrets, or Slack webhooks.
+`npm run dev` starts the API on 4000, a separate worker, and Vite on 5173. For individual processes: `npm run dev -w @reachinbox/api`, `npm run worker -w @reachinbox/api`, and `npm run dev -w @reachinbox/web`.
 
-## How scheduling works
+## See a populated demo
+
+With the API and worker running:
+
+```sh
+npm run demo:populate
+```
+
+This creates 53 real scheduled Ethereal test emails in the demo account: 15 welcome messages, 8 sales follow-ups with a limit of 3 per hour, and 30 messages for tomorrow. Calls are idempotent, so rerunning does not duplicate campaigns. The worker sends gradually and defers excess sales emails to the next UTC hour. The demo uses `example.test` recipients and configured From aliases.
+
+Files for manual testing:
+
+- [demo-leads.csv](demo-leads.csv): 7 unique recipients.
+- [demo-leads-30.csv](demo-leads-30.csv): 30 unique recipients.
+- [demo-attachment.txt](demo-attachment.txt): harmless attachment.
+
+Ethereal is fake SMTP: it does **not** deliver to Gmail or other real inboxes. Open a Sent message and follow **Open Ethereal email preview** to inspect the actual SMTP message and attachments.
+
+## Dashboard behavior
+
+- Add a recipient and press **Enter**, comma, or Tab. It becomes a removable chip; keep adding more. Enter in this field never sends the form. CSV/text upload deduplicates addresses and displays the detected count.
+- **Upload List** imports leads. The **paperclip** adds actual email attachments. Both accept up to 5 MB; email attachments have a combined 5 MB limit and a maximum of 20 files. The API validates decoded bytes, and Nginx permits the base64 request overhead.
+- The rich-text editor supports undo/redo, font size, bold/italic/underline, alignment, lists, indent/outdent, quote and strikethrough. HTML is sanitized server-side and sent with a plain-text alternative.
+- **Send** queues now. The clock opens **Send Later**; choose a future time, click **Done**, then **Send Later**. A successful submission shows Scheduled with confirmation, then rows move to Sent as delivery completes. Lists refresh every two seconds.
+- The **filter icon** opens All emails, Scheduled, Sent, Archived and Trash, plus an optional Starred-only checkbox. It is not a star toggle. All emails includes archived mail and excludes Trash; Trash is a separate recoverable view.
+- Message detail has Star, Archive/Unarchive, Trash/Restore, the user avatar, sender/recipient details, sanitized body, attachment download and delivery preview.
+- Trashing a pending message cancels its delivery. Restoring it resumes pending delivery (immediately if overdue). Already-sent messages are never resent by restore. A message already in SMTP delivery cannot be cancelled mid-send.
+- Archive only organizes the mailbox; an archived scheduled email still sends. Search and pagination work within the selected mailbox. Counts come from SQL aggregates and are not limited by page size.
+- Slack connection, Google account linking, queue dashboard and Logout live in the account menu. Logout clears the session and mailbox UI state.
+
+## Environment and OAuth
+
+The existing local `apps/api/.env` is ignored by Git. Never commit secrets.
+
+| Setting | Purpose |
+| --- | --- |
+| `DATABASE_URL`, `REDIS_URL`, `ELASTICSEARCH_URL` | Persistent backing services |
+| `SESSION_SECRET`, `WEB_URL` | Session signing and frontend origin |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | Real Google OAuth |
+| `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_CALLBACK_URL` | Real Slack OAuth with incoming webhook |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | Ethereal mailbox credentials |
+| `SMTP_SENDERS` | Comma-separated From aliases using the default Ethereal account |
+| `SMTP_ACCOUNTS_JSON` | Optional per-sender credentials, e.g. `{"sales@example.test":{"user":"…","pass":"…"}}` |
+| `WORKER_CONCURRENCY` | Parallel jobs per worker, default 5 |
+| `MIN_SEND_DELAY_MS` | Minimum global gap between SMTP starts, default 2000 ms |
+| `MAX_EMAILS_PER_HOUR_PER_SENDER` | Per-tenant/sender hourly ceiling, default 200 |
+
+For Google, register a Web OAuth client with `http://localhost:4000/auth/google/callback`. Login uses a real authorization code and verified ID token. An existing password account must explicitly sign in before linking Google.
+
+For Slack, add **and save** `http://localhost:4000/auth/slack/callback` under the same app's **OAuth & Permissions → Redirect URLs**. A generic `https://ngrok-free.app/slack/oauth_redirect` is not equivalent. The app's client ID must match the credentials in `.env`. Add the `incoming-webhook` scope. Connect Slack lets the user pick a workspace/channel; the backend stores its returned webhook and makes a real HTTP POST when the hourly limit is reached. Disconnect clears the connection; reconnect takes effect without redeploying. No connected Slack means no notification and no crash.
+
+After editing environment values, restart the API and worker. A Slack `redirect_uri` mismatch is a provider app configuration error; changing a frontend button cannot register the callback with Slack.
+
+## Scheduling, persistence and rate limits
 
 ```text
-React compose → Express → PostgreSQL campaign + email rows → BullMQ delayed jobs in Redis
-                                                           → worker → Ethereal SMTP
-                                                                    → PostgreSQL state + Elasticsearch index
+Compose → Express → PostgreSQL campaign + email rows → BullMQ delayed jobs in Redis
+                                                     → worker → Ethereal SMTP
+                                                              → DB state + Elasticsearch
 ```
 
-One row and one delayed job are created for each recipient. The API requires an `Idempotency-Key`; repeating the same request returns the existing campaign. The database transaction commits the campaign and rows together. If a process stops between that commit and queue insertion, worker startup reconciles missing jobs from PostgreSQL. Redis AOF and PostgreSQL volumes preserve data across service restarts. There is no cron job.
+Each request requires an `Idempotency-Key`. A database uniqueness constraint returns the existing campaign for repeated submissions. Email rows commit in one transaction. Attachments are stored once per campaign, not copied for every recipient.
 
-The worker atomically claims a scheduled row before sending. A second worker cannot claim that row, so duplicate queue jobs do not duplicate delivery. If a worker stops during SMTP, the result is ambiguous: after two minutes the row is marked failed and is **not automatically retried**. This favors no duplicate delivery over guaranteed delivery. Ethereal SMTP offers no provider-side idempotency key, so exactly-once delivery through a crash at the SMTP acknowledgment boundary cannot be guaranteed. Failed rows remain visible for manual investigation.
+Workers atomically claim a scheduled row before sending. Duplicate queue jobs cannot claim an already-sending/sent row. Redis AOF and named PostgreSQL/Redis volumes survive restarts. Startup reconciliation and a 30-second recovery check repair committed emails whose Redis jobs are missing. That timer performs recovery only; delivery times are persisted BullMQ delayed jobs. There is no cron or cron library.
 
-Elasticsearch indexes scheduled and completed email documents. Search queries Elasticsearch and also matches PostgreSQL text, so recently committed or temporarily unindexed rows remain discoverable. The search UI limits results to 500 rows per request.
+Failures before SMTP begins can safely return to Scheduled and be reconciled. A crash or error after SMTP begins can have an ambiguous outcome; such messages are not automatically resent, to avoid duplicates. Orphaned in-flight rows are marked Failed after their BullMQ job is no longer active. SMTP has no provider idempotency key, so exactly-once delivery at the SMTP acknowledgement crash boundary cannot be guaranteed.
 
-## Throughput and limits
+An atomic Redis Lua counter is keyed by tenant, sender and UTC hour, shared across worker instances. Compose may choose a lower hourly limit. When exhausted, work stays scheduled for the next hour instead of failing. A second Lua reservation spaces SMTP starts globally. Worker concurrency is configurable. Initial campaign times also incorporate the chosen per-email delay; after congestion, the global minimum gap remains enforced. The order of equally due jobs can vary across workers.
 
-- `WORKER_CONCURRENCY` controls parallel BullMQ jobs (default 5).
-- `MIN_SEND_DELAY_MS` reserves global send slots through atomic Redis Lua (default 2000 ms between starts of SMTP sends across all workers).
-- `MAX_EMAILS_PER_HOUR_PER_SENDER` is the upper bound (default 200). Compose can choose a lower limit. A Redis counter is keyed by tenant, sender, and UTC hour; its atomic reservation is shared by all worker instances.
-- On limit exhaustion, the email stays scheduled and gets a delayed job for the next UTC hour. The scheduled time shown in the UI updates. Reaching the configured limit posts once per tenant/sender/hour to the connected Slack webhook; an excess job can also trigger the alert if it races ahead of the last successful send.
+For 1,000+ simultaneous emails, BullMQ retains all jobs while concurrency, spacing and hourly counters pace delivery. No in-memory counter decides the hourly limit. Failed mail remains visible in Sent. Elasticsearch indexes scheduled and completed rows; PostgreSQL text matching provides a fallback during indexing lag/outages.
 
-For 1,000+ emails due together, BullMQ retains all jobs while worker concurrency, global send spacing, and hourly counters pace delivery. Parallel workers may change the exact order of emails due at the same time. Delayed and rate-limited jobs are not dropped.
+Slack alerts are deduplicated per tenant/sender/hour. Webhook HTTP failure releases the deduplication marker so a later limit hit can retry. The webhook call has a ten-second timeout.
 
-## API and UI
+## Automated verification
+
+```sh
+npm run build
+npm run smoke
+npm run verify:full
+```
+
+`smoke` verifies email/password login, invalid-password rejection, Google/Slack authorization redirects, authenticated API access, idempotency, delayed scheduling, actual Elasticsearch documents, actual Ethereal delivery, hourly deferral and one outbound HTTP webhook POST to a local receiver.
+
+`verify:full` verifies 5 MB boundary handling, archive/trash/restore, attachment download, tenant isolation, real HTML/attachment SMTP delivery, global spacing, duplicate-job protection, 1,000 queued jobs, pagination, counts, Slack disconnect and logout. It creates and removes a disposable test tenant and its jobs. It writes [verification-results.json](verification-results.json).
+
+To include the controlled two-worker restart and automatic queue-repair tests, explicitly pass the PID of the sole local worker:
+
+```sh
+RESTART_WORKER_PID=<local-worker-pid> npm run verify:full
+```
+
+That mode replaces the specified worker with two temporary workers, restarts them before a future message is due, verifies one delivery, and leaves one replacement worker running. Its PID is saved to `/tmp/outbox-worker.pid`. Do not use this option against a shared or production service.
+
+Google account consent and a **real Slack workspace notification** require the user's actual provider authorization. Redirect tests and a local webhook receiver do not substitute for that final provider check. See [VERIFICATION.md](VERIFICATION.md) for the checked and pending items.
+
+## Deploy all services together
+
+The YAML files run on the deployment server; they are not uploaded to a frontend-only host. A VPS with Docker Compose can host this entire stack. Use a machine with enough memory for Elasticsearch (4 GB RAM or more is a practical starting point), a domain pointing to its IP, and inbound ports 80/443.
+
+1. Copy the repository to the server, and `.env.production.example` to `.env.production`.
+2. Fill every production credential, a URL-safe strong `POSTGRES_PASSWORD`, a random `SESSION_SECRET` of at least 32 characters, and `PUBLIC_URL=https://your-domain`.
+3. Register `https://your-domain/auth/google/callback` and `https://your-domain/auth/slack/callback` in the provider apps. Add the domain to Google authorized origins if required by your provider setup.
+4. Run `npm run check:deploy` locally against that private env file if Node is available. It checks missing placeholders without printing secrets.
+5. On the server run:
+
+```sh
+docker compose --env-file .env.production -f compose.production.yml --profile https up --build -d
+docker compose --env-file .env.production -f compose.production.yml --profile https ps
+```
+
+This builds and runs PostgreSQL, Redis, Elasticsearch, the migration, API, worker, Nginx frontend and Caddy HTTPS proxy. Caddy obtains TLS certificates for the real domain. Migration completes before API/worker startup. Database, Redis, Elasticsearch and certificate data use named volumes. PostgreSQL/Redis/Elasticsearch ports are not public in this production configuration.
+
+If your hosting platform already supplies HTTPS, omit `--profile https` and route its proxy to the web service. The host's port 8080 is bound to loopback for a local reverse proxy. API and worker must be long-lived processes; a frontend-only or request-only serverless deployment will not run persistent BullMQ workers.
+
+Useful operations:
+
+```sh
+docker compose --env-file .env.production -f compose.production.yml logs --tail=100 api worker
+docker compose --env-file .env.production -f compose.production.yml restart api worker
+```
+
+Back up PostgreSQL and the volumes before upgrades. Do not run `down -v` on a deployment whose mail history you want to keep. Visit `/health`, sign in, schedule an Ethereal test, inspect its preview, connect Slack, and test the live alert before sharing a deployment URL.
+
+## API reference
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /auth/register`, `POST /auth/login` | Real email/password account creation and login |
-| `GET /auth/google`, `GET /auth/google/callback` | Google OAuth login |
-| `POST /auth/logout` | Destroy Redis-backed login session |
-| `GET /auth/slack`, `GET /auth/slack/callback` | Slack OAuth connection |
-| `POST /api/slack/disconnect` | Remove Slack connection |
-| `GET /api/me`, `GET /api/settings` | User profile and compose defaults |
-| `POST /api/emails/schedule` | Schedule `{recipients,subject,body,sender,startsAt,delayMs,hourlyLimit}` with `Idempotency-Key` |
-| `GET /api/emails?status=scheduled,sending&q=term` | Scheduled, sent, or failed rows with search |
-| `PATCH /api/emails/:id/star` | Toggle the message star |
+| `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Password accounts and session lifecycle |
+| `GET /auth/google`, `/auth/google/callback` | Google OAuth |
+| `GET /auth/slack`, `/auth/slack/callback` | Slack OAuth |
+| `POST /api/slack/disconnect` | Disconnect Slack |
+| `GET /api/me`, `/api/settings`, `/api/email-counts` | Profile, defaults, uncapped folder counts |
+| `POST /api/emails/schedule` | Schedule recipients with body/HTML, attachments, sender, time, gap and limit |
+| `GET /api/emails?mailbox=all&status=sent&q=term&offset=0` | Search/filter and 100-row pagination |
+| `PATCH /api/emails/:id/star` | Set `{starred:true/false}` |
+| `PATCH /api/emails/:id/mailbox` | Set `{mailbox:"inbox"/"archived"/"trash"}` |
+| `GET /api/emails/:id/attachments/:index` | Authenticated attachment download |
+| `GET /admin/queues` | Session-protected live BullMQ board |
 
-The dashboard provides Google and email/password login, user name/email/avatar, logout, Scheduled and Sent views, a full-page compose form, CSV/text lead parsing and counts, immediate Send and Send Later, search/filter/refresh, full-page message detail with Ethereal preview, loading and empty states, error messages, and Slack connect/disconnect inside the account menu.
+## Scope and remaining production trade-offs
 
-## Manual test walkthrough
+This is an outgoing email scheduler, as required by the assignment. It does not ingest real incoming mail. Slack webhook credentials are stored in PostgreSQL; encrypting them with a managed key and restricting the operations dashboard to dedicated administrators are recommended before multi-tenant public production use. Elasticsearch indexing failure falls back to SQL search; a durable search-index outbox would strengthen eventual reindexing guarantees. The design uses responsive equivalents on small screens instead of scaling a desktop frame down with browser zoom.
 
-1. Sign in with the local demo account above or create your own account on the login page. Open **Compose**.
-2. Click **Upload List** or the paperclip and choose [`demo-leads.csv`](demo-leads.csv). The To row should show seven detected addresses: three chips and `+4`. These `.test` addresses are deliberately non-deliverable; Ethereal still accepts them for preview.
-3. Enter a subject and body. Keep the configured sender in **From**, set delay to 2 seconds and hourly limit to 2. Click **Send** for an immediate campaign. New rows may briefly show under Scheduled while the worker sends. They move to Sent automatically (up to 2 seconds between UI refreshes). Open a Sent row and follow its Ethereal preview URL.
-4. Compose again, choose **Send Later** via the clock, select a future date and time, click **Done**, then click **Send Later** at the top. The Scheduled view shows the first three rows' dates and times. With an hourly limit of 2, subsequent jobs move to the next UTC hour; no jobs are discarded.
-5. For the restart test, schedule at least five minutes ahead, stop the worker process, restart it before the due time, and watch the Scheduled row move to Sent. Open the account card to connect Slack and choose a workspace channel. The first sender hourly-limit hit posts a real Slack webhook message. The same menu has Disconnect and Reconnect.
-
-If a recipient says they received nothing, that is expected from fake SMTP. Check the message's **Ethereal email preview** link in Sent. A missing preview or Failed status indicates a sender credential/SMTP problem.
-
-## Verification and demo
-
-After services and the worker are running, `npm run smoke` creates a disposable test tenant/session, checks password login and Google/Slack OAuth authorization redirects, schedules Ethereal messages through the real API, checks idempotency and Elasticsearch indexing, verifies SMTP delivery, and confirms that the per-sender hourly limit defers an excess email and makes an outbound webhook POST. It deletes its own test data and queue jobs. Live Google consent and a real Slack workspace/channel must be tested with your own accounts.
-
-For a restart demo, schedule a message several minutes in the future, stop only the worker, restart it before the due time, and show the email moving from Scheduled to Sent. The worker reconciles any committed rows lacking Redis jobs on startup. To demonstrate Slack, connect a workspace, set a low hourly limit, schedule more messages than the limit, and show the actual message in the selected Slack channel. Record these steps in a video of five minutes or less for submission.
-
-## Trade-offs
-
-The scheduling path uses startup reconciliation instead of a transactional outbox consumer. A queue insertion failure while the worker remains running requires a worker restart or another request with the same idempotency key to repair the row. SMTP ambiguity is never auto-retried. Slack webhook URLs are stored in PostgreSQL; a production deployment should encrypt them at rest and add webhook revocation and audit controls. The Figma shows an incoming-message detail and a rich-text toolbar; this scheduler has outgoing-message detail and plain-text email, with lightweight text-formatting shortcuts in compose. The paperclip uploads recipient lists, not arbitrary email attachments.
+The assignment's private GitHub repository, collaborator invitations, demo recording and submission form are separate submission steps. Do not submit until the real Google and Slack provider flows and the deployed domain have been verified.

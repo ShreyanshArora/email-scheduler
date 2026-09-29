@@ -71,10 +71,24 @@ services:
     build:
       context: .
       target: web
-    ports: ["${WEB_PORT:-8080}:80"]
+    ports: ["127.0.0.1:${WEB_PORT:-8080}:80"]
     depends_on: [api]
     restart: unless-stopped
+  https:
+    image: caddy:2-alpine
+    profiles: [https]
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [web]
+    restart: unless-stopped
 volumes:
+  caddy_data:
+  caddy_config:
   postgres_data:
   redis_data:
   elastic_data:
