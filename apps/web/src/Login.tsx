@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { GoogleMark } from "./GoogleMark";
 import { api } from "./shared";
 export function Login({
   onLogin,
@@ -34,7 +35,7 @@ export function Login({
       <section className="login-card">
         <h1>{mode === "login" ? "Login" : "Create account"}</h1>
         <a className="google-button" href="/auth/google">
-          <span className="google-g">G</span> Login with Google
+          <GoogleMark /> Login with Google
         </a>
         <div className="login-divider">
           <span>or sign up through email</span>
