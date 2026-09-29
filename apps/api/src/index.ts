@@ -1,17 +1,536 @@
-import express from 'express'; import cors from 'cors'; import session from 'express-session'; import { randomUUID } from 'crypto'; import { OAuth2Client } from 'google-auth-library';
-import { createBullBoard } from '@bull-board/api'; import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'; import { ExpressAdapter } from '@bull-board/express';
-import { config } from './config'; import { db, EmailRow } from './db'; import { emailQueue } from './queue'; import { indexEmail, searchIds } from './search'; import './worker';
-declare module 'express-session' { interface SessionData { tenantId?:string; oauthState?:string; slackState?:string; } }
-const app=express(); app.use(cors({origin:config.webUrl,credentials:true})); app.use(express.json({limit:'2mb'})); app.use(session({secret:config.sessionSecret,resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'lax'}}));
-const boardAdapter=new ExpressAdapter(); boardAdapter.setBasePath('/admin/queues'); createBullBoard({queues:[new BullMQAdapter(emailQueue)],serverAdapter:boardAdapter}); app.use('/admin/queues',boardAdapter.getRouter());
-const required=(req:any,res:any,next:any)=>req.session.tenantId?next():res.status(401).json({error:'Authentication required'});
-app.get('/health',(_req,res)=>res.json({ok:true}));
-app.get('/auth/google',(req,res)=>{ if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET)return res.status(501).json({error:'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET'}); const client=new OAuth2Client(process.env.GOOGLE_CLIENT_ID,process.env.GOOGLE_CLIENT_SECRET,process.env.GOOGLE_CALLBACK_URL); const state=randomUUID(); req.session.oauthState=state; res.redirect(client.generateAuthUrl({access_type:'offline',scope:['openid','email','profile'],state})); });
-app.get('/auth/google/callback',async(req,res,next)=>{ try { if(req.query.state!==req.session.oauthState) throw new Error('Invalid OAuth state'); const client=new OAuth2Client(process.env.GOOGLE_CLIENT_ID,process.env.GOOGLE_CLIENT_SECRET,process.env.GOOGLE_CALLBACK_URL); const {tokens}=await client.getToken(String(req.query.code)); const ticket=await client.verifyIdToken({idToken:tokens.id_token!,audience:process.env.GOOGLE_CLIENT_ID}); const p=ticket.getPayload()!; const {rows}=await db.query('INSERT INTO tenants(id,email,name,avatar_url) VALUES($1,$2,$3,$4) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,avatar_url=EXCLUDED.avatar_url RETURNING id',[randomUUID(),p.email,p.name ?? p.email,p.picture ?? null]); req.session.tenantId=rows[0].id; res.redirect(config.webUrl); } catch(e){next(e);} });
-app.post('/auth/logout',(req,res)=>req.session.destroy(()=>res.status(204).end()));
-app.get('/api/me',required,async(req:any,res)=>{const {rows}=await db.query('SELECT id,email,name,avatar_url,slack_access_token IS NOT NULL AS slack_connected FROM tenants WHERE id=$1',[req.session.tenantId]);res.json(rows[0]);});
-app.get('/auth/slack',required,(req:any,res)=>{if(!process.env.SLACK_CLIENT_ID)return res.status(501).json({error:'Set Slack OAuth credentials'});const state=randomUUID();req.session.slackState=state;const u=new URL('https://slack.com/oauth/v2/authorize');u.searchParams.set('client_id',process.env.SLACK_CLIENT_ID);u.searchParams.set('scope','chat:write');u.searchParams.set('redirect_uri',process.env.SLACK_CALLBACK_URL!);u.searchParams.set('state',state);res.redirect(u.toString());});
-app.get('/auth/slack/callback',required,async(req:any,res,next)=>{try{if(req.query.state!==req.session.slackState)throw Error('Invalid OAuth state');const body=new URLSearchParams({client_id:process.env.SLACK_CLIENT_ID!,client_secret:process.env.SLACK_CLIENT_SECRET!,code:String(req.query.code),redirect_uri:process.env.SLACK_CALLBACK_URL!});const r:any=await fetch('https://slack.com/api/oauth.v2.access',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const d=await r.json();if(!d.ok)throw Error(d.error);await db.query('UPDATE tenants SET slack_access_token=$1,slack_team_id=$2 WHERE id=$3',[d.access_token,d.team?.id,req.session.tenantId]);res.redirect(config.webUrl);}catch(e){next(e)}});
-app.post('/api/emails/schedule',required,async(req:any,res,next)=>{try { const {recipients,subject,body,sender,startsAt,delayMs=0,hourlyLimit=config.hourlyLimit}=req.body; if(!Array.isArray(recipients)||!recipients.length||!subject||!body||!sender||!startsAt) return res.status(400).json({error:'recipients, subject, body, sender, startsAt are required'}); const base=new Date(startsAt).getTime(), limit=Number(hourlyLimit); if(Number.isNaN(base)||!Number.isInteger(limit)||limit<1)return res.status(400).json({error:'Invalid start time or hourly limit'}); const created=[]; for(const [i,recipient] of recipients.entries()){const id=randomUUID(), scheduledAt=new Date(base+i*Number(delayMs)); const {rows:[email]}=await db.query<EmailRow>('INSERT INTO emails(id,tenant_id,recipient,subject,body,sender,hourly_limit,scheduled_at,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[id,req.session.tenantId,recipient,subject,body,sender,limit,scheduledAt,'scheduled']); const job=await emailQueue.add('send',{emailId:id},{jobId:id,delay:Math.max(0,scheduledAt.getTime()-Date.now())}); await db.query('UPDATE emails SET bull_job_id=$1 WHERE id=$2',[String(job.id),id]); await indexEmail(email); created.push(email);} res.status(201).json({count:created.length,emails:created}); }catch(e){next(e)}});
-app.get('/api/emails',required,async(req:any,res,next)=>{try{const status=req.query.status as string|undefined,q=String(req.query.q??'');const ids=q?await searchIds(req.session.tenantId,q):null;let sql='SELECT * FROM emails WHERE tenant_id=$1';const vals:any[]=[req.session.tenantId];if(status){vals.push(status);sql+=` AND status=$${vals.length}`};if(ids){if(!ids.length)return res.json([]);vals.push(ids);sql+=` AND id=ANY($${vals.length})`}else if(q){vals.push(`%${q}%`);sql+=` AND (recipient ILIKE $${vals.length} OR subject ILIKE $${vals.length} OR body ILIKE $${vals.length})`}sql+=' ORDER BY scheduled_at DESC LIMIT 200';const {rows}=await db.query<EmailRow>(sql,vals);res.json(rows)}catch(e){next(e)}});
-app.use((err:any,_req:any,res:any,_next:any)=>{console.error(err);res.status(500).json({error:err.message??'Internal server error'})}); app.listen(config.port,()=>console.log(`API: http://localhost:${config.port}; queues: /admin/queues`));
+import express, { NextFunction, Request, Response } from "express";
+import cors from "cors";
+import session from "express-session";
+import { randomUUID } from "crypto";
+import { OAuth2Client } from "google-auth-library";
+import { createBullBoard } from "@bull-board/api";
+import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
+import { ExpressAdapter } from "@bull-board/express";
+import { config } from "./config";
+import { db, EmailRow } from "./db";
+import { connection, emailQueue } from "./queue";
+import { indexEmails, searchIds } from "./search";
+import { RedisSessionStore } from "./session-store";
+import { hashPassword, verifyPassword } from "./password";
+
+declare module "express-session" {
+  interface SessionData {
+    tenantId?: string;
+    oauthState?: string;
+    slackState?: string;
+  }
+}
+
+const app = express();
+app.set("trust proxy", 1);
+app.use(cors({ origin: config.webUrl, credentials: true }));
+app.use(express.json({ limit: "2mb" }));
+app.use(
+  session({
+    name: "reachinbox.sid",
+    store: new RedisSessionStore(),
+    secret: config.sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  }),
+);
+
+function required(req: Request, res: Response, next: NextFunction) {
+  if (req.session.tenantId) return next();
+  res.status(401).json({ error: "Authentication required" });
+}
+
+const boardAdapter = new ExpressAdapter();
+boardAdapter.setBasePath("/admin/queues");
+createBullBoard({
+  queues: [new BullMQAdapter(emailQueue)],
+  serverAdapter: boardAdapter,
+});
+app.use("/admin/queues", required, boardAdapter.getRouter());
+
+app.get("/health", async (_req, res) => {
+  try {
+    await Promise.all([db.query("SELECT 1"), connection.ping()]);
+    res.json({ ok: true });
+  } catch {
+    res.status(503).json({ ok: false });
+  }
+});
+
+function saveSession(req: Request) {
+  return new Promise<void>((resolve, reject) =>
+    req.session.save((error) => (error ? reject(error) : resolve())),
+  );
+}
+
+async function signIn(req: Request, tenantId: string) {
+  await new Promise<void>((resolve, reject) =>
+    req.session.regenerate((error) => (error ? reject(error) : resolve())),
+  );
+  req.session.tenantId = tenantId;
+  await saveSession(req);
+}
+
+app.post("/auth/register", async (req, res, next) => {
+  try {
+    const email = String(req.body.email ?? "")
+      .trim()
+      .toLowerCase();
+    const name = String(req.body.name ?? "").trim();
+    const password = String(req.body.password ?? "");
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+      name.length < 2 ||
+      name.length > 100 ||
+      password.length < 8 ||
+      password.length > 200
+    )
+      return res
+        .status(400)
+        .json({
+          error:
+            "Enter your name, a valid email, and a password of at least 8 characters.",
+        });
+    const result = await db.query(
+      "INSERT INTO tenants(id,email,name,password_hash) VALUES($1,$2,$3,$4) ON CONFLICT(email) DO NOTHING RETURNING id",
+      [randomUUID(), email, name, await hashPassword(password)],
+    );
+    if (!result.rows.length)
+      return res
+        .status(409)
+        .json({
+          error: "An account with this email already exists. Please log in.",
+        });
+    await signIn(req, result.rows[0].id);
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/auth/login", async (req, res, next) => {
+  try {
+    const email = String(req.body.email ?? "")
+      .trim()
+      .toLowerCase();
+    const password = String(req.body.password ?? "");
+    if (!email || !password)
+      return res.status(400).json({ error: "Enter your email and password." });
+    const attemptKey = `login-attempt:${email}:${req.ip}`;
+    const attempts = await connection.incr(attemptKey);
+    if (attempts === 1) await connection.expire(attemptKey, 900);
+    if (attempts > 10)
+      return res
+        .status(429)
+        .json({ error: "Too many login attempts. Try again in 15 minutes." });
+    const {
+      rows: [tenant],
+    } = await db.query("SELECT id,password_hash FROM tenants WHERE email=$1", [
+      email,
+    ]);
+    if (
+      !tenant?.password_hash ||
+      !(await verifyPassword(password, tenant.password_hash))
+    )
+      return res.status(401).json({ error: "Invalid email or password." });
+    await connection.del(attemptKey);
+    await signIn(req, tenant.id);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/auth/google", async (req, res, next) => {
+  try {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET)
+      return res.status(501).json({ error: "Google OAuth is not configured" });
+    const client = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_CALLBACK_URL,
+    );
+    const state = randomUUID();
+    req.session.oauthState = state;
+    await saveSession(req);
+    res.redirect(
+      client.generateAuthUrl({ scope: ["openid", "email", "profile"], state }),
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/auth/google/callback", async (req, res, next) => {
+  try {
+    if (!req.session.oauthState || req.query.state !== req.session.oauthState)
+      throw new Error("Invalid OAuth state");
+    req.session.oauthState = undefined;
+    const client = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_CALLBACK_URL,
+    );
+    const { tokens } = await client.getToken(String(req.query.code));
+    const ticket = await client.verifyIdToken({
+      idToken: tokens.id_token!,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const profile = ticket.getPayload();
+    if (!profile?.email || !profile.email_verified)
+      throw new Error("A verified Google email is required");
+    const linkingTenantId = req.session.tenantId ?? null;
+    const {
+      rows: [tenant],
+    } = await db.query(
+      "INSERT INTO tenants(id,email,name,avatar_url,google_sub) VALUES($1,$2,$3,$4,$5) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,avatar_url=EXCLUDED.avatar_url,google_sub=EXCLUDED.google_sub WHERE tenants.google_sub=EXCLUDED.google_sub OR (tenants.google_sub IS NULL AND (tenants.password_hash IS NULL OR tenants.id=$6)) RETURNING id",
+      [
+        randomUUID(),
+        profile.email.toLowerCase(),
+        profile.name ?? profile.email,
+        profile.picture ?? null,
+        profile.sub,
+        linkingTenantId,
+      ],
+    );
+    if (!tenant)
+      return res
+        .status(409)
+        .json({
+          error:
+            "This email already has an account. Sign in with your password before connecting Google.",
+        });
+    await signIn(req, tenant.id);
+    res.redirect(config.webUrl);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/auth/logout", (req, res, next) =>
+  req.session.destroy((error) => (error ? next(error) : res.status(204).end())),
+);
+
+app.get("/api/me", required, async (req, res, next) => {
+  try {
+    const {
+      rows: [tenant],
+    } = await db.query(
+      "SELECT id,email,name,avatar_url,google_sub IS NOT NULL AS google_connected,slack_webhook_url IS NOT NULL AS slack_connected,slack_channel FROM tenants WHERE id=$1",
+      [req.session.tenantId],
+    );
+    res.json(tenant);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/settings", required, (_req, res) => {
+  let configuredSenders: string[] = [];
+  try {
+    configuredSenders = Object.keys(
+      JSON.parse(process.env.SMTP_ACCOUNTS_JSON || "{}"),
+    );
+  } catch {
+    /* Config validation happens in worker. */
+  }
+  const senders = Array.from(
+    new Set(
+      [process.env.SMTP_USER, ...configuredSenders].filter(
+        (value): value is string => Boolean(value),
+      ),
+    ),
+  );
+  res.json({
+    default_sender: senders[0] ?? "",
+    senders,
+    max_hourly_limit: config.hourlyLimit,
+    min_send_delay_ms: config.minDelay,
+  });
+});
+
+app.get("/auth/slack", required, async (req, res, next) => {
+  try {
+    if (
+      !process.env.SLACK_CLIENT_ID ||
+      !process.env.SLACK_CLIENT_SECRET ||
+      !process.env.SLACK_CALLBACK_URL
+    )
+      return res.status(501).json({ error: "Slack OAuth is not configured" });
+    const state = randomUUID();
+    req.session.slackState = state;
+    await saveSession(req);
+    const url = new URL("https://slack.com/oauth/v2/authorize");
+    url.searchParams.set("client_id", process.env.SLACK_CLIENT_ID);
+    url.searchParams.set("scope", "incoming-webhook");
+    url.searchParams.set("redirect_uri", process.env.SLACK_CALLBACK_URL);
+    url.searchParams.set("state", state);
+    res.redirect(url.toString());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/auth/slack/callback", required, async (req, res, next) => {
+  try {
+    if (!req.session.slackState || req.query.state !== req.session.slackState)
+      throw new Error("Invalid Slack OAuth state");
+    req.session.slackState = undefined;
+    await saveSession(req);
+    const params = new URLSearchParams({
+      client_id: process.env.SLACK_CLIENT_ID!,
+      client_secret: process.env.SLACK_CLIENT_SECRET!,
+      code: String(req.query.code),
+      redirect_uri: process.env.SLACK_CALLBACK_URL!,
+    });
+    const response = await fetch("https://slack.com/api/oauth.v2.access", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    });
+    const data = (await response.json()) as {
+      ok: boolean;
+      error?: string;
+      access_token?: string;
+      team?: { id: string };
+      incoming_webhook?: { url: string; channel: string };
+    };
+    if (!data.ok || !data.incoming_webhook?.url)
+      throw new Error(data.error ?? "Slack did not return an incoming webhook");
+    await db.query(
+      "UPDATE tenants SET slack_access_token=$1,slack_team_id=$2,slack_webhook_url=$3,slack_channel=$4 WHERE id=$5",
+      [
+        data.access_token,
+        data.team?.id,
+        data.incoming_webhook.url,
+        data.incoming_webhook.channel,
+        req.session.tenantId,
+      ],
+    );
+    res.redirect(config.webUrl);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/slack/disconnect", required, async (req, res, next) => {
+  try {
+    await db.query(
+      "UPDATE tenants SET slack_access_token=NULL,slack_team_id=NULL,slack_webhook_url=NULL,slack_channel=NULL WHERE id=$1",
+      [req.session.tenantId],
+    );
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/emails/schedule", required, async (req, res, next) => {
+  try {
+    const {
+      recipients,
+      subject,
+      body,
+      sender,
+      startsAt,
+      delayMs = 0,
+      hourlyLimit = config.hourlyLimit,
+    } = req.body;
+    const key = req.header("Idempotency-Key");
+    if (!key || key.length > 200)
+      return res
+        .status(400)
+        .json({ error: "A valid Idempotency-Key header is required" });
+    if (
+      !Array.isArray(recipients) ||
+      recipients.length < 1 ||
+      recipients.length > 5000 ||
+      typeof subject !== "string" ||
+      !subject.trim() ||
+      typeof body !== "string" ||
+      !body.trim() ||
+      typeof sender !== "string" ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender) ||
+      !startsAt
+    )
+      return res
+        .status(400)
+        .json({
+          error:
+            "Valid recipients, subject, body, sender, and startsAt are required",
+        });
+    if (
+      recipients.some(
+        (value: unknown) =>
+          typeof value !== "string" ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+      )
+    )
+      return res
+        .status(400)
+        .json({ error: "One or more recipient addresses are invalid" });
+    const base = new Date(startsAt).getTime();
+    const gap = Number(delayMs);
+    const limit = Number(hourlyLimit);
+    if (
+      !Number.isFinite(base) ||
+      !Number.isInteger(gap) ||
+      gap < 0 ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > config.hourlyLimit ||
+      base + (recipients.length - 1) * gap > 8640000000000000
+    )
+      return res
+        .status(400)
+        .json({ error: "Invalid start time, delay, or hourly limit" });
+
+    const client = await db.connect();
+    let emails: EmailRow[] = [];
+    let idempotent = false;
+    try {
+      await client.query("BEGIN");
+      const campaignId = randomUUID();
+      const inserted = await client.query(
+        "INSERT INTO campaigns(id,tenant_id,idempotency_key) VALUES($1,$2,$3) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id",
+        [campaignId, req.session.tenantId, key],
+      );
+      if (!inserted.rows.length) {
+        idempotent = true;
+        const existing = await client.query<EmailRow>(
+          "SELECT * FROM emails WHERE campaign_id=(SELECT id FROM campaigns WHERE tenant_id=$1 AND idempotency_key=$2) ORDER BY scheduled_at,id",
+          [req.session.tenantId, key],
+        );
+        emails = existing.rows;
+      } else {
+        for (const [index, recipient] of recipients.entries()) {
+          const scheduledAt = new Date(base + index * gap);
+          const {
+            rows: [email],
+          } = await client.query<EmailRow>(
+            "INSERT INTO emails(id,tenant_id,campaign_id,recipient,subject,body,sender,hourly_limit,scheduled_at,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
+            [
+              randomUUID(),
+              req.session.tenantId,
+              campaignId,
+              recipient,
+              subject.trim(),
+              body,
+              sender.toLowerCase(),
+              limit,
+              scheduledAt,
+              "scheduled",
+            ],
+          );
+          emails.push(email);
+        }
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    for (const email of emails) {
+      if (email.bull_job_id && (await emailQueue.getJob(email.bull_job_id)))
+        continue;
+      const job = await emailQueue.add(
+        "send",
+        { emailId: email.id },
+        {
+          jobId: email.id,
+          delay: Math.max(
+            0,
+            new Date(email.scheduled_at).getTime() - Date.now(),
+          ),
+        },
+      );
+      await db.query("UPDATE emails SET bull_job_id=$2 WHERE id=$1", [
+        email.id,
+        job.id,
+      ]);
+    }
+    if (!idempotent) await indexEmails(emails);
+    res
+      .status(idempotent ? 200 : 201)
+      .json({ count: emails.length, emails, idempotent });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/emails", required, async (req, res, next) => {
+  try {
+    const statuses = String(req.query.status ?? "")
+      .split(",")
+      .filter(Boolean);
+    if (
+      statuses.some(
+        (status) =>
+          !["scheduled", "sending", "sent", "failed"].includes(status),
+      )
+    )
+      return res.status(400).json({ error: "Invalid status filter" });
+    const query = String(req.query.q ?? "")
+      .trim()
+      .slice(0, 200);
+    const ids = query ? await searchIds(req.session.tenantId!, query) : [];
+    let sql = "SELECT * FROM emails WHERE tenant_id=$1";
+    const values: unknown[] = [req.session.tenantId];
+    if (statuses.length) {
+      values.push(statuses);
+      sql += ` AND status=ANY($${values.length})`;
+    }
+    if (query) {
+      values.push(`%${query}%`);
+      const textIndex = values.length;
+      values.push(ids ?? []);
+      sql += ` AND (id=ANY($${values.length}::uuid[]) OR recipient ILIKE $${textIndex} OR subject ILIKE $${textIndex} OR body ILIKE $${textIndex} OR sender ILIKE $${textIndex})`;
+    }
+    sql += " ORDER BY scheduled_at DESC,id LIMIT 500";
+    const { rows } = await db.query<EmailRow>(sql, values);
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/emails/:id/star", required, async (req, res, next) => {
+  try {
+    if (typeof req.body.starred !== "boolean")
+      return res.status(400).json({ error: "starred must be a boolean" });
+    const {
+      rows: [email],
+    } = await db.query<EmailRow>(
+      "UPDATE emails SET starred=$1 WHERE id=$2 AND tenant_id=$3 RETURNING *",
+      [req.body.starred, req.params.id, req.session.tenantId],
+    );
+    if (!email) return res.status(404).json({ error: "Email not found" });
+    res.json(email);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(error);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+async function main() {
+  app.listen(config.port, () =>
+    console.log(`API: http://localhost:${config.port}; queues: /admin/queues`),
+  );
+}
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

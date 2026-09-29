@@ -1,6 +1,260 @@
-import {useEffect,useMemo,useState} from 'react'; import {createRoot} from 'react-dom/client'; import './style.css';
-const API=''; type User={name:string,email:string,avatar_url?:string,slack_connected:boolean}; type Email={id:string;recipient:string;subject:string;scheduled_at:string;sent_at?:string;status:string};
-async function api<T>(path:string, options?:RequestInit):Promise<T>{const r=await fetch(path,{credentials:'include',headers:{'Content-Type':'application/json',...(options?.headers??{})},...options});if(!r.ok)throw Error((await r.json().catch(()=>({}))).error??'Request failed');return r.status===204?undefined as T:r.json()}
-function Compose({close,done}:{close:()=>void;done:()=>void}){const [form,setForm]=useState({subject:'',body:'',sender:'outreach@ethereal.email',startsAt:new Date(Date.now()+60000).toISOString().slice(0,16),delayMs:'2000',hourlyLimit:'200'}),[addresses,setAddresses]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState('');const change=(k:string,v:string)=>setForm({...form,[k]:v});const file=(f?:File)=>{if(!f)return;const reader=new FileReader();reader.onload=()=>setAddresses((String(reader.result).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig)??[]).map(x=>x.toLowerCase()));reader.readAsText(f)};async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{await api('/api/emails/schedule',{method:'POST',body:JSON.stringify({...form,recipients:addresses,startsAt:new Date(form.startsAt).toISOString(),delayMs:Number(form.delayMs),hourlyLimit:Number(form.hourlyLimit)})});done();close()}catch(e:any){setError(e.message)}finally{setBusy(false)}}return <div className="overlay"><form className="modal" onSubmit={submit}><div className="modalhead"><h2>Compose new email</h2><button type="button" className="icon" onClick={close}>×</button></div><label>Subject<input required value={form.subject} onChange={e=>change('subject',e.target.value)}/></label><label>Email body<textarea required rows={6} value={form.body} onChange={e=>change('body',e.target.value)}/></label><label>Sender email<input required type="email" value={form.sender} onChange={e=>change('sender',e.target.value)}/></label><label>Upload CSV or text leads<input type="file" accept=".csv,.txt,text/csv,text/plain" onChange={e=>file(e.target.files?.[0])}/><small>{addresses.length} valid email address{addresses.length===1?'':'es'} detected</small></label><div className="fields"><label>Start time<input required type="datetime-local" value={form.startsAt} onChange={e=>change('startsAt',e.target.value)}/></label><label>Delay (ms)<input required min="0" type="number" value={form.delayMs} onChange={e=>change('delayMs',e.target.value)}/></label><label>Hourly limit<input required min="1" type="number" value={form.hourlyLimit} onChange={e=>change('hourlyLimit',e.target.value)}/></label></div>{error&&<p className="error">{error}</p>}<button className="primary" disabled={busy||!addresses.length}>{busy?'Scheduling…':`Schedule ${addresses.length||''} emails`}</button></form></div>}
-function EmailTable({title,status,refresh}:{title:string;status:string;refresh:number}){const [items,setItems]=useState<Email[]|null>(null),[q,setQ]=useState('');useEffect(()=>{setItems(null);api<Email[]>(`/api/emails?status=${status}&q=${encodeURIComponent(q)}`).then(setItems).catch(()=>setItems([]))},[status,refresh,q]);return <section className="card"><div className="sectionhead"><h2>{title}</h2><input className="search" placeholder="Search emails" value={q} onChange={e=>setQ(e.target.value)}/></div>{!items?<div className="empty">Loading emails…</div>:items.length===0?<div className="empty">No {title.toLowerCase()} yet.</div>:<div className="tablewrap"><table><thead><tr><th>Recipient</th><th>Subject</th><th>{status==='sent'?'Sent':'Scheduled'} time</th><th>Status</th></tr></thead><tbody>{items.map(e=><tr key={e.id}><td>{e.recipient}</td><td>{e.subject}</td><td>{new Date(status==='sent'?e.sent_at!:e.scheduled_at).toLocaleString()}</td><td><span className={'pill '+e.status}>{e.status}</span></td></tr>)}</tbody></table></div>}</section>}
-function App(){const [user,setUser]=useState<User|null|undefined>(undefined),[tab,setTab]=useState<'scheduled'|'sent'>('scheduled'),[compose,setCompose]=useState(false),[refresh,setRefresh]=useState(0);useEffect(()=>{api<User>('/api/me').then(setUser).catch(()=>setUser(null))},[]);if(user===undefined)return <main className="center">Loading ReachInbox…</main>;if(!user)return <main className="login"><div className="brand">✦ reachinbox</div><h1>Make every outreach count.</h1><p>Schedule personalised email campaigns with reliable delivery.</p><a className="google" href="/auth/google">Continue with Google</a><small>Google OAuth credentials must be configured in the API.</small></main>;return <><header><div className="brand">✦ reachinbox</div><nav><button className={tab==='scheduled'?'active':''} onClick={()=>setTab('scheduled')}>Scheduled Emails</button><button className={tab==='sent'?'active':''} onClick={()=>setTab('sent')}>Sent Emails</button></nav><div className="account">{user.avatar_url?<img src={user.avatar_url}/>:<i>{user.name[0]}</i>}<div><b>{user.name}</b><small>{user.email}</small></div><a className="slack" href="/auth/slack">{user.slack_connected?'Slack connected':'Connect Slack'}</a><button className="logout" onClick={async()=>{await api('/auth/logout',{method:'POST'});setUser(null)}}>Logout</button></div></header><main className="dash"><div className="hero"><div><p>EMAIL CAMPAIGNS</p><h1>Good morning, {user.name.split(' ')[0]}.</h1><span>Plan messages now. Let ReachInbox handle the timing.</span></div><button className="primary" onClick={()=>setCompose(true)}>＋ Compose new email</button></div><EmailTable title={tab==='scheduled'?'Scheduled emails':'Sent emails'} status={tab==='scheduled'?'scheduled':'sent'} refresh={refresh}/></main>{compose&&<Compose close={()=>setCompose(false)} done={()=>setRefresh(x=>x+1)}/>}</>}; createRoot(document.getElementById('root')!).render(<App/>);
+import { useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import { api, formatDate, Icon, recipientName } from "./shared";
+import type { Email, Folder, Settings, User, View } from "./shared";
+import { Login } from "./Login";
+import { Sidebar } from "./Sidebar";
+import { Compose } from "./Compose";
+import { Detail } from "./Detail";
+import "./style.css";
+
+function App() {
+  const [user, setUser] = useState<User | null | undefined>(),
+    [settings, setSettings] = useState<Settings | null>(null),
+    [view, setView] = useState<View>("scheduled"),
+    [previous, setPrevious] = useState<Folder>("scheduled"),
+    [selected, setSelected] = useState<Email | null>(null),
+    [items, setItems] = useState<Email[]>([]),
+    [counts, setCounts] = useState<Record<Folder, number>>({
+      scheduled: 0,
+      sent: 0,
+    }),
+    [search, setSearch] = useState(""),
+    [starredOnly, setStarredOnly] = useState(false),
+    [refresh, setRefresh] = useState(0),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState("");
+  async function refreshUser() {
+    const profile = await api<User>("/api/me");
+    setUser(profile);
+    setSettings(await api<Settings>("/api/settings"));
+  }
+  useEffect(() => {
+    refreshUser().catch((cause) => {
+      if (cause instanceof Error && cause.message !== "Authentication required")
+        setError(cause.message);
+      setUser(null);
+    });
+  }, []);
+  useEffect(() => {
+    if (!user || (view !== "scheduled" && view !== "sent")) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const rows = await api<Email[]>(
+          `/api/emails?status=${view === "scheduled" ? "scheduled,sending" : "sent,failed"}&q=${encodeURIComponent(search)}`,
+        );
+        if (!cancelled) {
+          setItems(rows);
+          setError("");
+          setLoading(false);
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          setError(
+            cause instanceof Error ? cause.message : "Could not load emails.",
+          );
+          setLoading(false);
+        }
+      }
+    }
+    setLoading(true);
+    const timer = setTimeout(load, search ? 250 : 0),
+      interval = setInterval(load, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [user?.id, view, search, refresh]);
+  useEffect(() => {
+    if (!user) return;
+    const load = async () => {
+      try {
+        const rows = await api<Email[]>("/api/emails");
+        setCounts({
+          scheduled: rows.filter(
+            (row) => row.status === "scheduled" || row.status === "sending",
+          ).length,
+          sent: rows.filter(
+            (row) => row.status === "sent" || row.status === "failed",
+          ).length,
+        });
+      } catch {
+        /* List view reports errors. */
+      }
+    };
+    load();
+    const timer = setInterval(load, 2000);
+    return () => clearInterval(timer);
+  }, [user?.id, refresh]);
+  function navigate(next: View) {
+    if (view === "scheduled" || view === "sent") setPrevious(view);
+    setView(next);
+    setSearch("");
+    setSelected(null);
+  }
+  async function logout() {
+    await api("/auth/logout", { method: "POST" });
+    setView("scheduled");
+    setPrevious("scheduled");
+    setSelected(null);
+    setItems([]);
+    setCounts({ scheduled: 0, sent: 0 });
+    setSearch("");
+    setStarredOnly(false);
+    setError("");
+    setUser(null);
+  }
+  async function toggleStar(email: Email) {
+    try {
+      const updated = await api<Email>(`/api/emails/${email.id}/star`, {
+        method: "PATCH",
+        body: JSON.stringify({ starred: !email.starred }),
+      });
+      setItems((current) =>
+        current.map((row) => (row.id === updated.id ? updated : row)),
+      );
+      if (selected?.id === updated.id) setSelected(updated);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not star email.",
+      );
+    }
+  }
+  if (user === undefined) return <div className="loading-screen">Loading…</div>;
+  if (!user)
+    return (
+      <Login
+        onLogin={() => refreshUser().catch((cause) => setError(String(cause)))}
+        initialError={error}
+      />
+    );
+  if (view === "compose")
+    return settings ? (
+      <Compose
+        settings={settings}
+        close={() => navigate(previous)}
+        done={(folder) => {
+          setRefresh((value) => value + 1);
+          navigate(folder);
+        }}
+      />
+    ) : (
+      <div className="loading-screen">Loading settings…</div>
+    );
+  if (view === "detail" && selected)
+    return (
+      <Detail
+        email={selected}
+        close={() => navigate(previous)}
+        star={toggleStar}
+      />
+    );
+  const visible = starredOnly ? items.filter((row) => row.starred) : items;
+  return (
+    <div className="app-shell">
+      <Sidebar
+        user={user}
+        view={view}
+        counts={counts}
+        navigate={navigate}
+        logout={logout}
+        refreshUser={() =>
+          refreshUser().catch((cause) => setError(String(cause)))
+        }
+      />
+      <main className="inbox-main">
+        <header className="inbox-toolbar">
+          <label className="search-box">
+            <Icon name="search" size={22} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search"
+              aria-label="Search emails"
+            />
+          </label>
+          <button
+            className={`icon-button ${starredOnly ? "active" : ""}`}
+            title="Filter starred"
+            onClick={() => setStarredOnly(!starredOnly)}
+          >
+            <Icon name="filter" />
+          </button>
+          <button
+            className="icon-button"
+            title="Refresh"
+            onClick={() => setRefresh((value) => value + 1)}
+          >
+            <Icon name="refresh" />
+          </button>
+        </header>
+        {error && (
+          <div className="banner-error" role="alert">
+            {error}
+          </div>
+        )}
+        {loading ? (
+          <div className="list-state">Loading emails…</div>
+        ) : visible.length === 0 ? (
+          <div className="list-state">
+            <Icon name="mail" size={30} />
+            <h2>No {starredOnly ? "starred" : view} emails yet</h2>
+            <p>
+              {view === "scheduled"
+                ? "Your upcoming emails will appear here."
+                : "Emails you send will appear here."}
+            </p>
+          </div>
+        ) : (
+          <div className="message-list">
+            {visible.map((email) => (
+              <div className="message-row" key={email.id}>
+                <button
+                  className="row-open"
+                  onClick={() => {
+                    setSelected(email);
+                    setPrevious(view as Folder);
+                    setView("detail");
+                  }}
+                >
+                  <span className="row-to">
+                    To: {recipientName(email.recipient)}
+                  </span>
+                  <span
+                    className={`status-pill ${email.status === "scheduled" || email.status === "sending" ? "scheduled" : ""} ${email.status === "failed" ? "failed" : ""}`}
+                  >
+                    {email.status === "scheduled" ||
+                    email.status === "sending" ? (
+                      <>
+                        <Icon name="clock" size={15} />{" "}
+                        {formatDate(email.scheduled_at)}
+                      </>
+                    ) : email.status === "failed" ? (
+                      "Failed"
+                    ) : (
+                      "Sent"
+                    )}
+                  </span>
+                  <span className="row-subject">
+                    <strong>{email.subject}</strong>
+                    <span> - {email.body.replace(/\s+/g, " ")}</span>
+                  </span>
+                </button>
+                <button
+                  className={`icon-button row-star ${email.starred ? "starred" : ""}`}
+                  title={email.starred ? "Unstar email" : "Star email"}
+                  onClick={() => toggleStar(email)}
+                >
+                  <Icon name="star" size={22} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+createRoot(document.getElementById("root")!).render(<App />);

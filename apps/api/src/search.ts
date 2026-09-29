@@ -1,4 +1,97 @@
-import { Client } from 'elasticsearch'; import { config } from './config'; import type { EmailRow } from './db';
-const client = new Client({ host: config.elastic }); const index = 'emails';
-export async function indexEmail(e: EmailRow) { try { await client.index({ index, type:'_doc', id:e.id, body:{ tenantId:e.tenant_id, recipient:e.recipient, subject:e.subject, body:e.body, sender:e.sender, status:e.status, scheduledAt:e.scheduled_at, sentAt:e.sent_at } }); } catch (err) { console.warn('Elasticsearch unavailable; indexing will retry on next state change'); } }
-export async function searchIds(tenantId:string, q:string) { try { const r:any = await client.search({ index, body:{ query:{ bool:{ filter:[{term:{tenantId}}], must:q ? [{multi_match:{query:q,fields:['recipient','subject','body','sender']}}] : [] } } } }); return r.hits.hits.map((h:any)=>h._id); } catch { return null; } }
+import { config } from "./config";
+import type { EmailRow } from "./db";
+
+const endpoint = config.elastic.replace(/\/$/, "");
+
+function document(email: EmailRow) {
+  return {
+    tenantId: email.tenant_id,
+    recipient: email.recipient,
+    subject: email.subject,
+    body: email.body,
+    sender: email.sender,
+    status: email.status,
+    scheduledAt: email.scheduled_at,
+    sentAt: email.sent_at,
+  };
+}
+
+export async function indexEmail(email: EmailRow) {
+  try {
+    const response = await fetch(`${endpoint}/emails/_doc/${email.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(document(email)),
+    });
+    if (!response.ok) throw new Error(`Elasticsearch HTTP ${response.status}`);
+  } catch (error) {
+    console.warn("Could not index email in Elasticsearch:", error);
+  }
+}
+
+export async function indexEmails(emails: EmailRow[]) {
+  for (let offset = 0; offset < emails.length; offset += 500) {
+    const batch = emails.slice(offset, offset + 500);
+    const lines =
+      batch
+        .flatMap((email) => [
+          JSON.stringify({ index: { _index: "emails", _id: email.id } }),
+          JSON.stringify(document(email)),
+        ])
+        .join("\n") + "\n";
+    try {
+      const response = await fetch(`${endpoint}/_bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-ndjson" },
+        body: lines,
+      });
+      if (
+        !response.ok ||
+        ((await response.json()) as { errors?: boolean }).errors
+      )
+        throw new Error("Elasticsearch bulk indexing failed");
+    } catch (error) {
+      console.warn("Could not bulk-index emails in Elasticsearch:", error);
+    }
+  }
+}
+
+export async function searchIds(
+  tenantId: string,
+  query: string,
+): Promise<string[] | null> {
+  try {
+    const response = await fetch(`${endpoint}/emails/_search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        size: 500,
+        _source: false,
+        query: {
+          bool: {
+            filter: [{ term: { "tenantId.keyword": tenantId } }],
+            must: [
+              {
+                multi_match: {
+                  query,
+                  fields: ["recipient", "subject", "body", "sender"],
+                },
+              },
+            ],
+          },
+        },
+      }),
+    });
+    if (!response.ok) throw new Error(`Elasticsearch HTTP ${response.status}`);
+    const result = (await response.json()) as {
+      hits: { hits: Array<{ _id: string }> };
+    };
+    return result.hits.hits.map((hit) => hit._id);
+  } catch (error) {
+    console.warn(
+      "Elasticsearch search unavailable; using database fallback:",
+      error,
+    );
+    return null;
+  }
+}
