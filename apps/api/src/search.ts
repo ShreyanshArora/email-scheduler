@@ -21,6 +21,7 @@ export async function indexEmail(email: EmailRow) {
   try {
     const response = await fetch(`${endpoint}/emails/_doc/${email.id}`, {
       method: "PUT",
+      signal: AbortSignal.timeout(5000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(document(email)),
     });
@@ -43,6 +44,7 @@ export async function indexEmails(emails: EmailRow[]) {
     try {
       const response = await fetch(`${endpoint}/_bulk`, {
         method: "POST",
+        signal: AbortSignal.timeout(5000),
         headers: { "Content-Type": "application/x-ndjson" },
         body: lines,
       });
@@ -64,6 +66,7 @@ export async function searchIds(
   try {
     const response = await fetch(`${endpoint}/emails/_search`, {
       method: "POST",
+        signal: AbortSignal.timeout(5000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         size: 500,
