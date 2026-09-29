@@ -15,11 +15,11 @@ Copy `.env.production.example` to `.env.production`, fill it on the server, and 
 
 ## Manual GitHub deployment
 
-Create the GitHub environment `production`. Set secrets `EC2_HOST`, `EC2_SSH_KEY`, and `EC2_KNOWN_HOSTS`; verify the host fingerprint through the AWS console or an existing trusted SSH session before saving its known-hosts entry. Set variables `EC2_USER` (default ubuntu) and `DEPLOY_PATH` (default /home/ubuntu/outbox-sde-). The server needs read access to the private repository and the first checkout must contain `deploy/release.sh`.
+The `production` workflow runs only when manually dispatched from `main`. It builds the exact commit first, then receives short-lived AWS credentials through GitHub OIDC. The IAM role may run `AWS-RunShellScript` only on the named Outbox instance; the instance has a separate read-only GitHub deploy key. GitHub stores no EC2 SSH private key or production `.env` file. The deploy script takes a lock, fetches that commit, rebuilds containers, checks `/health`, and rolls back application code if the health check fails. Database migrations must remain backward compatible.
 
-Run Actions → Deploy → Run workflow on main. It builds first, verifies the SSH host, deploys the exact commit, and checks HTTP health. CI runs separately on pushes and pull requests. No deployment happens merely by pushing code.
+Repository variables: `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, and `AWS_INSTANCE_ID`. The AWS role trusts only this repository's immutable numeric identity on `main`. An instance profile with `AmazonSSMManagedInstanceCore` keeps the Systems Manager agent connected; the security group restricts SSH to the maintainer's current IP, while 80 and 443 are public for Caddy HTTPS.
 
-The release lock prevents simultaneous releases. Docker grants the worker 120 seconds to drain SMTP work. If application startup or health fails, the previous code is rebuilt. Database migrations are not reversed: migrations must stay backward compatible, and a backup is required before destructive schema changes.
+A stable Elastic IP and `sslip.io` DNS hostname provide HTTPS without purchasing a domain. Register the *exact* deployed `/auth/google/callback` and `/auth/slack/callback` URLs in the providers before expecting those login/connection flows to work. Google may require a domain that the candidate owns for production OAuth; if it refuses the free hostname, acquire a domain and update `PUBLIC_URL` and both provider clients. Email/password sign-in remains available meanwhile.
 
 ## Backups and recovery
 
