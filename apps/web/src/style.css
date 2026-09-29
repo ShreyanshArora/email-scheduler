@@ -1158,3 +1158,9 @@ button:disabled {
 
 .brand-logo { display: block; width: 78px; height: 30px; color: #080808; }
 @media(max-width:680px) { .brand-logo { width: 60px; height: 24px; } }
+
+/* Message headers open without shifting the message body. */
+.detail-to { position: relative; }
+.message-headers { position: absolute; z-index: 5; top: 18px; left: 0; display: grid; grid-template-columns: 58px minmax(0,1fr); gap: 9px 12px; width: min(440px, 75vw); padding: 18px; margin: 0; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 5px 18px #18223020; font-size: 13px; line-height: 1.5; }
+.message-headers dt { text-align: right; color: #7c8596; }
+.message-headers dd { margin: 0; color: #263142; overflow-wrap: anywhere; }
