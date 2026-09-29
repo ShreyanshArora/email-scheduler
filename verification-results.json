@@ -1,13 +1,14 @@
 {
-  "checkedAt": "2026-09-29T21:53:51.098Z",
+  "checkedAt": "2026-09-29T21:58:10.212Z",
   "outcome": "passed",
   "passed": [
     "unauthenticated mailbox access is rejected",
+    "cross-origin mutation is rejected before changing mail",
     "5 MB attachment accepted; 5 MB + 1 byte rejected",
     "archive, trash cancellation, restore/requeue, starred filtering and tenant isolation",
     "real HTML + attachment SMTP delivery, sanitized HTML, download, and cross-worker spacing",
     "duplicate queue job does not trigger a second SMTP attempt",
-    "1000 delayed jobs persisted, paginated and counted in 849 ms",
+    "1000 delayed jobs persisted, paginated and counted in 1133 ms",
     "Slack disconnect and logout revoke local connection/session"
   ]
 }

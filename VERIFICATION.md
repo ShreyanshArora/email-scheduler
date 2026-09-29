@@ -1,6 +1,6 @@
 # Verification record
 
-Local verification performed September 30, 2026 (Asia/Kolkata). Machine-readable results are in `verification-results.json`, `worker-lifecycle-verification.json`, and `container-verification.json`. Container verification predates the latest small UI/worker changes; rerun it before final production release.
+Local verification performed September 30, 2026 (Asia/Kolkata). Machine-readable results are in `verification-results.json`, `worker-lifecycle-verification.json`, and `container-verification.json`. The production containers were rebuilt and checked again after the UI/worker fixes, including required SMTP TLS.
 
 | Requirement | Evidence | Result |
 | --- | --- | --- |
