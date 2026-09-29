@@ -301,6 +301,7 @@ app.get("/auth/slack/callback", required, async (req, res, next) => {
       redirect_uri: process.env.SLACK_CALLBACK_URL!,
     });
     const response = await fetch("https://slack.com/api/oauth.v2.access", {
+      signal: AbortSignal.timeout(15000),
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params,
