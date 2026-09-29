@@ -151,11 +151,13 @@ export function Avatar({ user }: { user: User }) {
 }
 
 export function formatDate(value: string) {
-  return new Date(value).toLocaleString(undefined, {
+  return new Date(value).toLocaleString("en-US", {
     weekday: "short",
     hour: "numeric",
     minute: "2-digit",
-  });
+    second: "2-digit",
+    hour12: true,
+  }).replace(",", "");
 }
 export function recipientName(email: string) {
   return email
