@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Brand } from "./Brand";
 import { api, Avatar, Icon } from "./shared";
 import type { User, Folder, View } from "./shared";
 function AccountMenu({
@@ -80,9 +81,7 @@ export function Sidebar({
 }) {
   return (
     <aside className="sidebar">
-      <div className="wordmark" aria-label="ONB">
-        ONB
-      </div>
+      <div className="wordmark"><Brand /></div>
       <AccountMenu user={user} logout={logout} refreshUser={refreshUser} />
       <button className="compose-trigger" onClick={() => navigate("compose")}>
         Compose

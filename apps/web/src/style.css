@@ -1155,3 +1155,6 @@ button:disabled {
 }
 
 .compose-error { margin: 0 auto 10px; width: min(1020px, calc(100% - 40px)); background: #fff4f2; border-radius: 8px; padding: 10px 14px; }
+
+.brand-logo { display: block; width: 78px; height: 30px; color: #080808; }
+@media(max-width:680px) { .brand-logo { width: 60px; height: 24px; } }
