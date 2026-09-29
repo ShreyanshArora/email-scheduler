@@ -162,10 +162,14 @@ Back up PostgreSQL and the volumes before upgrades. Do not run `down -v` on a de
 | `PATCH /api/emails/:id/star` | Set `{starred:true/false}` |
 | `PATCH /api/emails/:id/mailbox` | Set `{mailbox:"inbox"/"archived"/"trash"}` |
 | `GET /api/emails/:id/attachments/:index` | Authenticated attachment download |
-| `GET /admin/queues` | Session-protected live BullMQ board |
+| `GET /admin/queues` | Session-protected live BullMQ board (production administrator allowlist) |
 
 ## Scope and remaining production trade-offs
 
-This is an outgoing email scheduler, as required by the assignment. It does not ingest real incoming mail. Slack webhook credentials are stored in PostgreSQL; encrypting them with a managed key and restricting the operations dashboard to dedicated administrators are recommended before multi-tenant public production use. Elasticsearch indexing failure falls back to SQL search; a durable search-index outbox would strengthen eventual reindexing guarantees. The design uses responsive equivalents on small screens instead of scaling a desktop frame down with browser zoom.
+This is an outgoing email scheduler, as required by the assignment. It does not ingest real incoming mail. Slack webhook credentials are stored in PostgreSQL; encrypting them with a managed key is recommended before multi-tenant public production use. The operations dashboard is restricted by `QUEUE_ADMIN_EMAILS` in production. Elasticsearch indexing failure falls back to SQL search; a durable search-index outbox would strengthen eventual reindexing guarantees. The design uses responsive equivalents on small screens instead of scaling a desktop frame down with browser zoom.
 
 The assignment's private GitHub repository, collaborator invitations, demo recording and submission form are separate submission steps. Do not submit until the real Google and Slack provider flows and the deployed domain have been verified.
+
+## Latest testing and delivery guide
+
+See [TESTING.md](TESTING.md) for the CSV walkthrough, [VERIFICATION.md](VERIFICATION.md) for exact evidence and outstanding provider checks, and [deploy/OPERATIONS.md](deploy/OPERATIONS.md) for AWS preparation, GitHub Actions secrets and backups. CI runs on main pushes; deployment is manual through Actions. Worker containers have a 120-second shutdown grace period. `npm run verify:worker` tests early-fire recovery and active-send shutdown when passed the sole local worker PID via `RESTART_WORKER_PID`.
