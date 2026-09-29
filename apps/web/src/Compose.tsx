@@ -88,7 +88,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
         </div>
         <button type="button" className="upload-link" onClick={() => fileRef.current?.click()}><Icon name="upload" size={18} /> Upload List</button>
       </div>
-      <input ref={fileRef} className="visually-hidden" type="file" accept=".csv,.txt,text/csv,text/plain" onChange={event => upload(event.target.files?.[0])} />
+      <input ref={fileRef} className="visually-hidden" type="file" accept=".csv,.txt,text/csv,text/plain" onChange={event => { void upload(event.target.files?.[0]).catch(() => setError("Could not read this recipient list.")); event.target.value = ""; }} />
       <input ref={attachmentRef} className="visually-hidden" type="file" multiple aria-label="Email attachments" onChange={event => { void attach(event.target.files).catch(() => setError("Could not read attachment.")); event.target.value = ""; }} />
       {filename && <div className="file-indicator">{filename}</div>}
       <div className="compose-line subject-line"><label htmlFor="subject">Subject</label><input id="subject" required value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" /></div>
