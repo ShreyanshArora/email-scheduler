@@ -31,7 +31,8 @@ function smtpFor(sender: string) {
       nodemailer.createTransport({
         host: process.env.SMTP_HOST ?? "smtp.ethereal.email",
         port: Number(process.env.SMTP_PORT ?? 587),
-        secure: false,
+        secure: Number(process.env.SMTP_PORT ?? 587) === 465,
+        requireTLS: process.env.SMTP_REQUIRE_TLS !== "false",
         auth: account,
         connectionTimeout: 30000,
         socketTimeout: 60000,
