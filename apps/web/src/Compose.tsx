@@ -12,7 +12,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
   const [delay, setDelay] = useState(String(Math.ceil(settings.min_send_delay_ms / 1000))),
     [limit, setLimit] = useState(String(settings.max_hourly_limit)), [expanded, setExpanded] = useState(false);
   const [laterOpen, setLaterOpen] = useState(false), [laterAt, setLaterAt] = useState(localDateTime(new Date(Date.now() + 3600000))),
-    [selectedLater, setSelectedLater] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
+    [selectedLater, setSelectedLater] = useState(false), [confirmedLaterAt, setConfirmedLaterAt] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [key] = useState(() => crypto.randomUUID()), fileRef = useRef<HTMLInputElement>(null), attachmentRef = useRef<HTMLInputElement>(null);
   const allRecipients = useMemo(() => Array.from(new Set([...recipients, ...emailsFromText(draft)])), [recipients, draft]);
   function commitDraft() {
@@ -50,7 +50,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
     if (!commitDraft()) return;
     if (!allRecipients.length) return setError("Add at least one valid recipient or upload a list.");
     if (!body.trim()) return setError("Write an email body.");
-    const start = selectedLater ? new Date(laterAt) : new Date();
+    const start = selectedLater ? new Date(confirmedLaterAt) : new Date();
     if (!Number.isFinite(start.getTime()) || (selectedLater && start.getTime() <= Date.now())) return setError("Choose a future date and time.");
     setBusy(true);
     try {
@@ -103,14 +103,14 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
         <div><strong>{file.name}</strong><small>{(file.size / 1024).toFixed(1)} KB</small></div>
         <button type="button" className="icon-button attachment-remove" aria-label={`Remove attachment ${file.name}`} onClick={() => setAttachments(current => current.filter((_, i) => i !== index))}><Icon name="close" size={16} /></button>
       </div>)}</div>}
-      {selectedLater && <p className="scheduled-note">Scheduled to start {new Date(laterAt).toLocaleString()} <button type="button" onClick={() => setSelectedLater(false)}>Send now instead</button></p>}
+      {selectedLater && <p className="scheduled-note">Scheduled to start {new Date(confirmedLaterAt).toLocaleString()} <button type="button" onClick={() => setSelectedLater(false)}>Send now instead</button></p>}
     </div>
     {laterOpen && <div className="send-later-popover" role="dialog" aria-label="Send Later">
       <h2>Send Later</h2><label className="date-picker">Pick date &amp; time <input type="datetime-local" value={laterAt} onChange={e => setLaterAt(e.target.value)} /><Icon name="calendar" size={18} /></label>
       <button type="button" onClick={() => preset(9)}>Tomorrow</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
       <div className="popover-actions"><button type="button" onClick={() => setLaterOpen(false)}>Cancel</button><button type="button" className="send-button" onClick={() => {
         if (!Number.isFinite(new Date(laterAt).getTime()) || new Date(laterAt).getTime() <= Date.now()) return setError("Choose a future date and time.");
-        setSelectedLater(true); setLaterOpen(false);
+        setConfirmedLaterAt(laterAt); setSelectedLater(true); setLaterOpen(false);
       }}>Done</button></div>
     </div>}
   </form>;
