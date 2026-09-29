@@ -2,6 +2,31 @@
 
 Express + TypeScript, React + TypeScript, PostgreSQL, Redis/BullMQ, Elasticsearch and Ethereal SMTP. The UI follows the supplied ONB Figma: login, Scheduled/Sent inbox, full-page compose, Send Later popover, and message detail. Custom CSS implements the design and responsive layouts.
 
+## Live deployment
+
+The full stack is running at **https://65-2-236-100.sslip.io/** on a dedicated AWS EC2 `t4g.small` in Mumbai (`ap-south-1`). Caddy issued a publicly trusted HTTPS certificate. PostgreSQL, Redis, Elasticsearch, the BullMQ worker, API, and frontend run in Docker Compose with persistent volumes. Production starts with no seeded password account: register your own account or use Google after its production callback has been added. A separate private demo account was created to exercise deployed sends and scheduled jobs; its password is deliberately not committed.
+
+The exact provider callbacks for this host are:
+
+- Google: `https://65-2-236-100.sslip.io/auth/google/callback`
+- Slack: `https://65-2-236-100.sslip.io/auth/slack/callback`
+
+Both must be added to the existing OAuth clients before live Google sign-in and live Slack connection can succeed. Localhost callback entries may remain. The deployment workflow runs manually on `main` via GitHub OIDC and AWS Systems Manager; it does not keep SSH credentials in GitHub. See [operations](deploy/OPERATIONS.md).
+
+The dedicated instance costs about **$8.18/month** at the current $0.0112/hour AWS price, plus 32 GB gp3 storage, one public IPv4 address and any data transfer/tax. Estimate roughly **$15–20/month** before credits, depending on storage-region pricing and traffic; verify actual charges in AWS Billing. The unrelated existing EC2 instance was left untouched.
+
+## Assignment feature map
+
+| Requested area | Implemented behavior |
+| --- | --- |
+| Backend scheduler | Express/TypeScript API saves campaigns and delayed BullMQ jobs to PostgreSQL and Redis. No cron delivery scheduler. |
+| Restart safety and idempotency | Persistent Redis AOF, database reconciliation, atomic email claims, unique campaign keys, and graceful worker shutdown. |
+| Throughput controls | Configurable worker concurrency, minimum send spacing, Redis-backed per-sender hourly counters, and next-window deferral. |
+| SMTP and search | Multiple From aliases/accounts, Ethereal fake SMTP previews, and Elasticsearch indexing/search with SQL fallback. |
+| Queue visibility and Slack | Administrator Bull Board, per-user Slack OAuth connection, real webhook alerts, reconnect and disconnect. |
+| Authentication | Google OAuth plus email/password, session-backed identity, account details and logout. |
+| Frontend | Figma-inspired Scheduled/Sent mailbox, compose with CSV/recipients/attachments, Send/Send Later, rich editor, filters, message details and loading/error/empty states. |
+
 ## Start locally
 
 Use Node.js 22+ and Docker Desktop.
