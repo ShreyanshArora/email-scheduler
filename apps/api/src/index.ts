@@ -26,6 +26,13 @@ const app = express();
 app.set("trust proxy", 1);
 app.use(cors({ origin: config.webUrl, credentials: true }));
 app.use(express.json({ limit: "8mb" }));
+app.use((req, res, next) => {
+  const origin = req.header("Origin");
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && origin && origin !== new URL(config.webUrl).origin) {
+    return res.status(403).json({ error: "Request origin is not allowed" });
+  }
+  next();
+});
 app.use(
   session({
     name: "reachinbox.sid",
