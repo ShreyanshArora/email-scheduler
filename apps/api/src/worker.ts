@@ -1,4 +1,4 @@
-import { Worker } from "bullmq";
+import { Worker, Job, DelayedError } from "bullmq";
 import nodemailer from "nodemailer";
 import { db, EmailRow } from "./db";
 import { config } from "./config";
@@ -68,14 +68,26 @@ async function notifyLimit(tenantId: string, sender: string) {
   }
 }
 
-async function processEmail(job: { data: EmailJob }) {
+async function processEmail(job: Job<EmailJob>, token?: string) {
   const {
     rows: [claimed],
   } = await db.query<EmailRow>(
     "UPDATE emails SET status='sending', sending_started_at=now() WHERE id=$1 AND status='scheduled' AND mailbox<>'trash' AND scheduled_at<=now() RETURNING *",
     [job.data.emailId],
   );
-  if (!claimed) return;
+  if (!claimed) {
+    // Use the database clock: a delayed Redis job may wake before PostgreSQL
+    // considers the row due when hosts have different clocks.
+    const { rows: [pending] } = await db.query<{ wait_ms: string }>(
+      "SELECT GREATEST(1,EXTRACT(EPOCH FROM (scheduled_at-now()))*1000)::text AS wait_ms FROM emails WHERE id=$1 AND status='scheduled' AND mailbox<>'trash'",
+      [job.data.emailId],
+    );
+    if (pending) {
+      await job.moveToDelayed(Date.now() + Number(pending.wait_ms) + 50, token);
+      throw new DelayedError();
+    }
+    return;
+  }
   let smtpAttempted = false;
 
   try {
