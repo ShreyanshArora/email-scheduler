@@ -10,6 +10,7 @@ export function Detail({ email, user, close, star, move, error }: {
       <button className="icon-button" onClick={close} aria-label="Back"><Icon name="back" size={25} /></button>
       <h1>{email.subject}</h1>
       <div className="detail-actions">
+        {email.preview_url && <a className="preview-button" href={email.preview_url} target="_blank" rel="noopener noreferrer">Open Ethereal</a>}
         <button className={`icon-button ${email.starred ? "starred" : ""}`} onClick={() => star(email)} title={email.starred ? "Unstar email" : "Star email"}><Icon name="star" /></button>
         {email.mailbox === "trash" ? <button className="icon-button" onClick={() => move(email, "inbox")} title="Restore email"><Icon name="restore" /></button> : <>
           <button className="icon-button" onClick={() => move(email, email.mailbox === "archived" ? "inbox" : "archived")} title={email.mailbox === "archived" ? "Unarchive email" : "Archive email"}><Icon name="archive" /></button>
@@ -33,7 +34,7 @@ export function Detail({ email, user, close, star, move, error }: {
           {["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) ? <img src={`/api/emails/${email.id}/attachments/${index}?preview=1`} alt={file.name} /> : <div className="attachment-file"><Icon name="paperclip" size={30} /></div>}<div><strong>{file.name}</strong><small>{(file.size / 1024).toFixed(1)} KB · Download</small></div>
         </a>)}</div>}
         <div className="delivery-info"><strong>{email.mailbox === "trash" && email.status === "scheduled" ? "Cancelled · In Trash" : email.status === "sent" ? "Sent" : email.status === "failed" ? "Failed" : "Scheduled"}</strong> · {new Date(date).toLocaleString()}
-          {email.error && <p>{email.error}</p>}{email.preview_url && <p><a href={email.preview_url} target="_blank" rel="noreferrer">Open Ethereal email preview ↗</a></p>}
+          {email.error && <p>{email.error}</p>}
         </div>
       </div>
     </article>
