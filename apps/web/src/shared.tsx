@@ -7,6 +7,7 @@ export type User = {
   google_connected: boolean;
   slack_connected: boolean;
   slack_channel: string | null;
+  queue_admin: boolean;
 };
 export type Settings = {
   default_sender: string;

@@ -64,14 +64,17 @@ createBullBoard({
 });
 app.use("/admin/queues", required, async (req, res, next) => {
   try {
-    const allowed = (process.env.QUEUE_ADMIN_EMAILS ?? "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
-    // Local development remains convenient; production is deny-by-default.
-    if (!allowed.length && process.env.NODE_ENV !== "production") return next();
     const { rows: [tenant] } = await db.query("SELECT email FROM tenants WHERE id=$1", [req.session.tenantId]);
-    if (!tenant || !allowed.includes(tenant.email.toLowerCase())) return res.status(403).json({ error: "Queue administrator access required" });
+    if (!tenant || !isQueueAdmin(tenant.email)) return res.status(403).json({ error: "Queue administrator access required" });
     next();
   } catch (error) { next(error); }
 }, boardAdapter.getRouter());
+
+function isQueueAdmin(email: string): boolean {
+  const allowed = (process.env.QUEUE_ADMIN_EMAILS ?? "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
+  // Local development remains convenient; production is deny-by-default.
+  return (!allowed.length && process.env.NODE_ENV !== "production") || allowed.includes(email.toLowerCase());
+}
 
 app.get("/health", async (_req, res) => {
   try {
@@ -268,7 +271,7 @@ app.get("/api/me", required, async (req, res, next) => {
       "SELECT id,email,name,avatar_url,google_sub IS NOT NULL AS google_connected,slack_webhook_url IS NOT NULL AS slack_connected,slack_channel FROM tenants WHERE id=$1",
       [req.session.tenantId],
     );
-    res.json(tenant);
+    res.json(tenant && { ...tenant, queue_admin: isQueueAdmin(tenant.email) });
   } catch (error) {
     next(error);
   }
