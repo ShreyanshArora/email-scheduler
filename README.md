@@ -63,6 +63,7 @@ This creates 53 real scheduled Ethereal test emails in the demo account: 15 welc
 Files for manual testing:
 
 - [demo-leads.csv](demo-leads.csv): 7 unique recipients.
+- [demo-leads-with-duplicates.csv](demo-leads-with-duplicates.csv): 3 unique recipients and 2 duplicate rows to demonstrate deduplication.
 - [demo-leads-30.csv](demo-leads-30.csv): 30 unique recipients.
 - [demo-attachment.txt](demo-attachment.txt): harmless attachment.
 
@@ -70,15 +71,15 @@ Ethereal is fake SMTP: it does **not** deliver to Gmail or other real inboxes. O
 
 ## Dashboard behavior
 
-- Add a recipient and press **Enter**, comma, or Tab. It becomes a removable chip; keep adding more. Enter in this field never sends the form. CSV/text upload deduplicates addresses and displays the detected count.
+- Add a recipient and press **Enter**, comma, or Tab. It becomes a removable chip; keep adding more. Enter in this field never sends the form. CSV/text upload deduplicates addresses and displays both the unique count and the number of duplicates removed.
 - **Upload List** imports leads. The **paperclip** adds actual email attachments. Both accept up to 5 MB; email attachments have a combined 5 MB limit and a maximum of 20 files. The API validates decoded bytes, and Nginx permits the base64 request overhead.
 - The rich-text editor supports undo/redo, font size, bold/italic/underline, alignment, lists, indent/outdent, quote and strikethrough. HTML is sanitized server-side and sent with a plain-text alternative.
 - **Send** queues now. The clock opens **Send Later**; choose a future time, click **Done**, then **Send Later**. A successful submission shows Scheduled with confirmation, then rows move to Sent as delivery completes. Lists refresh every two seconds.
-- The **filter icon** opens All emails, Scheduled, Sent, Archived and Trash, plus an optional Starred-only checkbox. It is not a star toggle. All emails includes archived mail and excludes Trash; Trash is a separate recoverable view.
+- The **filter icon** lets you combine All emails, Scheduled, Sent, Archived and Trash using checkboxes, with an optional Starred-only condition and **Clear filters**. It is not a star toggle. All emails includes archived mail and excludes Trash; Trash is a separate recoverable view.
 - Message detail has Star, Archive/Unarchive, Trash/Restore, the user avatar, sender/recipient details, sanitized body, attachment download and delivery preview.
 - Trashing a pending message cancels its delivery. Restoring it resumes pending delivery (immediately if overdue). Already-sent messages are never resent by restore. A message already in SMTP delivery cannot be cancelled mid-send.
 - Archive only organizes the mailbox; an archived scheduled email still sends. Search and pagination work within the selected mailbox. Counts come from SQL aggregates and are not limited by page size.
-- Slack connection, queue dashboard and Logout live in the account menu. The last mailbox folder is remembered across refreshes, so a completed send remains easy to find in Sent or All emails.
+- Slack connection, queue dashboard and Logout live in the account menu. The queue dashboard opens in a new tab. The last mailbox folder is remembered across refreshes, so a completed send remains easy to find in Sent or All emails.
 - The single email/password form signs in an existing account or creates a new one when the email is unused. New passwords must have at least eight characters. Google-only accounts must use Google sign-in.
 
 ## Environment and OAuth
@@ -196,8 +197,16 @@ Back up PostgreSQL and the volumes before upgrades. Do not run `down -v` on a de
 
 This is an outgoing email scheduler, as required by the assignment. It does not ingest real incoming mail. Slack webhook credentials are stored in PostgreSQL; encrypting them with a managed key is recommended before multi-tenant public production use. The operations dashboard is restricted by `QUEUE_ADMIN_EMAILS` in production. Elasticsearch indexing failure falls back to SQL search; a durable search-index outbox would strengthen eventual reindexing guarantees. The design uses responsive equivalents on small screens instead of scaling a desktop frame down with browser zoom.
 
-The assignment's private GitHub repository, collaborator invitations, demo recording and submission form are separate submission steps. Do not submit until the real Google and Slack provider flows and the deployed domain have been verified.
+The repository is private, Mitrajit has collaborator access, and Yadav036 has a pending invitation. Record and upload the demo video before submitting the form. Slack authorization is separate for local and deployed accounts; connect Slack on the hosted app to receive alerts from that deployment.
 
 ## Latest testing and delivery guide
 
 See [TESTING.md](TESTING.md) for the CSV walkthrough, [VERIFICATION.md](VERIFICATION.md) for exact evidence and outstanding provider checks, and [deploy/OPERATIONS.md](deploy/OPERATIONS.md) for AWS preparation, GitHub Actions secrets and backups. CI runs on main pushes; deployment is manual through Actions. Worker containers have a 120-second shutdown grace period. `npm run verify:worker` tests early-fire recovery and active-send shutdown when passed the sole local worker PID via `RESTART_WORKER_PID`.
+
+## Recording and submission
+
+See [DEMO-SCRIPT.md](DEMO-SCRIPT.md) for a 4:20 walkthrough, copy-ready project description and submission URLs. The private repository has Mitrajit as a collaborator; Yadav036 has been invited. The demo video still needs to be recorded and uploaded.
+
+For a recording-friendly local session, build once with `npm run build`, stop any existing app processes (or `npm run demo:stop` for the managed runner), and run `npm run demo:run`. This starts the API, worker and frontend together. Ctrl+C drains the worker and stops the application; Up arrow followed by Enter restarts it. PostgreSQL and Redis remain in Docker with their data. If a scheduled time passes while the worker is stopped, the email sends after restart, subject to rate limits. A missing worker means queued messages cannot send, even if the API and UI are running; the demo runner exits all application services if one exits unexpectedly.
+
+The frontend Nginx proxy resolves the API through Docker DNS with a short refresh period. Releases also recreate the frontend proxy after replacing the API, avoiding stale container addresses and 502 responses.

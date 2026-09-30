@@ -5,7 +5,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev -w @reachinbox/api\" \"npm run worker -w @reachinbox/api\" \"npm run dev -w @reachinbox/web\"",
+    "dev": "concurrently --kill-others \"npm run dev -w @reachinbox/api\" \"npm run worker -w @reachinbox/api\" \"npm run dev -w @reachinbox/web\"",
     "build": "npm run build --workspaces",
     "db:migrate": "npm run db:migrate -w @reachinbox/api",
     "demo:seed": "npm run demo:seed -w @reachinbox/api",
@@ -15,7 +15,9 @@
     "demo:populate": "node scripts/populate-demo.mjs",
     "check:deploy": "node scripts/check-deploy.mjs",
     "verify:containers": "node scripts/container-check.mjs",
-    "verify:worker": "node scripts/verify-worker-lifecycle.mjs"
+    "verify:worker": "node scripts/verify-worker-lifecycle.mjs",
+    "demo:run": "node scripts/demo-server.mjs",
+    "demo:stop": "node scripts/demo-stop.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

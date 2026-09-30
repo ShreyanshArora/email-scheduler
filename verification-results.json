@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-29T21:58:10.212Z",
+  "checkedAt": "2026-09-30T13:34:05.624Z",
   "outcome": "passed",
   "passed": [
     "unauthenticated mailbox access is rejected",
@@ -8,7 +8,7 @@
     "archive, trash cancellation, restore/requeue, starred filtering and tenant isolation",
     "real HTML + attachment SMTP delivery, sanitized HTML, download, and cross-worker spacing",
     "duplicate queue job does not trigger a second SMTP attempt",
-    "1000 delayed jobs persisted, paginated and counted in 1133 ms",
+    "1000 delayed jobs persisted, paginated and counted in 965 ms",
     "Slack disconnect and logout revoke local connection/session"
   ]
 }

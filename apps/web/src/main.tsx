@@ -70,7 +70,7 @@ function App() {
   function navigate(next: View) {
     if (isFolder(view)) setPrevious(view);
     if (isFolder(next)) localStorage.setItem("reachinbox:last-folder", next);
-    setView(next); setSearch(""); setSelected(null); setFiltersOpen(false); setLimit(100); setError("");
+    setView(next); setSearch(""); setFilterFolders([]); setStarredOnly(false); setSelected(null); setFiltersOpen(false); setLimit(100); setError("");
   }
   async function logout() {
     try { await api("/auth/logout", { method: "POST" }); localStorage.removeItem("reachinbox:last-folder"); sessionStorage.removeItem("reachinbox:active-campaign"); setCampaignId(null); setProgress(null); setView("scheduled"); setPrevious("scheduled"); setSelected(null); setItems([]); setCounts(emptyCounts); setSearch(""); setStarredOnly(false); setError(""); setNotice(""); setUser(null); }

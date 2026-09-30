@@ -9,3 +9,5 @@ apps/api/uploads
 *.tsbuildinfo
 
 .private-deploy/
+
+.demo-server.pid
