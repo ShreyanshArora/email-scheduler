@@ -131,6 +131,41 @@ app.post("/auth/register", async (req, res, next) => {
   }
 });
 
+// The single email form signs in existing accounts and creates new ones.
+// Google-only accounts stay Google-only unless the owner explicitly links a password.
+app.post("/auth/email", async (req, res, next) => {
+  try {
+    const email = String(req.body.email ?? "").trim().toLowerCase();
+    const password = String(req.body.password ?? "");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password || password.length > 200)
+      return res.status(400).json({ error: "Enter a valid email and password." });
+    const attemptKey = `login-attempt:${email}:${req.ip}`;
+    const attempts = await connection.incr(attemptKey);
+    if (attempts === 1) await connection.expire(attemptKey, 900);
+    if (attempts > 10) return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+    const { rows: [existing] } = await db.query("SELECT id,password_hash FROM tenants WHERE email=$1", [email]);
+    if (existing) {
+      if (!existing.password_hash) return res.status(409).json({ error: "Use Login with Google for this account." });
+      if (!(await verifyPassword(password, existing.password_hash)))
+        return res.status(401).json({ error: "Incorrect password." });
+      await connection.del(attemptKey);
+      await signIn(req, existing.id);
+      return res.json({ ok: true });
+    }
+    if (password.length < 8 || password.length > 200)
+      return res.status(400).json({ error: "New accounts need a password of at least 8 characters." });
+    const name = email.split("@")[0].slice(0, 100);
+    const result = await db.query(
+      "INSERT INTO tenants(id,email,name,password_hash) VALUES($1,$2,$3,$4) ON CONFLICT(email) DO NOTHING RETURNING id",
+      [randomUUID(), email, name, await hashPassword(password)],
+    );
+    if (!result.rows.length) return res.status(409).json({ error: "Account created in another request. Try again." });
+    await connection.del(attemptKey);
+    await signIn(req, result.rows[0].id);
+    res.status(201).json({ ok: true });
+  } catch (error) { next(error); }
+});
+
 app.post("/auth/login", async (req, res, next) => {
   try {
     const email = String(req.body.email ?? "")
@@ -378,7 +413,7 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
       typeof body !== "string" ||
       !body.trim() ||
       typeof sender !== "string" ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender) ||
+      (sender !== "rotate" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender)) ||
       !startsAt
     )
       return res
@@ -398,6 +433,13 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
         .status(400)
         .json({ error: "One or more recipient addresses are invalid" });
     const uniqueRecipients = Array.from(new Set((recipients as string[]).map(value => value.trim().toLowerCase())));
+    const availableSenders = Array.from(new Set([
+      process.env.SMTP_USER,
+      ...(process.env.SMTP_SENDERS ?? "").split(",").map(value => value.trim()),
+      ...Object.keys(process.env.SMTP_ACCOUNTS_JSON ? JSON.parse(process.env.SMTP_ACCOUNTS_JSON) : {}),
+    ].filter((value): value is string => Boolean(value))));
+    if (sender === "rotate" && !availableSenders.length)
+      return res.status(400).json({ error: "No SMTP senders are configured." });
     const base = new Date(startsAt).getTime();
     const gap = Number(delayMs);
     const limit = Number(hourlyLimit);
@@ -471,7 +513,7 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
               recipient,
               subject.trim(),
               body,
-              sender.toLowerCase(),
+              (sender === "rotate" ? availableSenders[index % availableSenders.length] : sender).toLowerCase(),
               limit,
               scheduledAt,
               "scheduled",

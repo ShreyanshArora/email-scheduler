@@ -5,13 +5,13 @@ import { RichEditor } from "./RichEditor";
 const MAX_BYTES = 5 * 1024 * 1024;
 type Attachment = { name: string; type: string; size: number; content: string };
 export function Compose({ settings, close, done }: { settings: Settings; close: () => void; done: (folder: Folder) => void }) {
-  const [sender, setSender] = useState(settings.default_sender), [draft, setDraft] = useState(""),
+  const [sender, setSender] = useState(settings.senders.length > 1 ? "rotate" : settings.default_sender), [draft, setDraft] = useState(""),
     [recipients, setRecipients] = useState<string[]>([]), [filename, setFilename] = useState(""),
     [subject, setSubject] = useState(""), [body, setBody] = useState(""), [bodyHtml, setBodyHtml] = useState(""),
     [attachments, setAttachments] = useState<Attachment[]>([]);
   const [delay, setDelay] = useState(String(Math.ceil(settings.min_send_delay_ms / 1000))),
     [limit, setLimit] = useState(String(settings.max_hourly_limit)), [expanded, setExpanded] = useState(false);
-  const [laterOpen, setLaterOpen] = useState(false), [laterAt, setLaterAt] = useState(localDateTime(new Date(Date.now() + 3600000))),
+  const [laterOpen, setLaterOpen] = useState(false), [laterAt, setLaterAt] = useState(localDateTime(new Date(Date.now() + 300000))),
     [selectedLater, setSelectedLater] = useState(false), [confirmedLaterAt, setConfirmedLaterAt] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [key] = useState(() => crypto.randomUUID()), fileRef = useRef<HTMLInputElement>(null), attachmentRef = useRef<HTMLInputElement>(null);
   const allRecipients = useMemo(() => Array.from(new Set([...recipients, ...emailsFromText(draft)])), [recipients, draft]);
@@ -57,7 +57,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
       await api("/api/emails/schedule", { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({
         recipients: allRecipients, subject, body, bodyHtml, attachments, sender, startsAt: start.toISOString(), delayMs: Number(delay) * 1000, hourlyLimit: Number(limit),
       }) });
-      done("scheduled");
+      done(selectedLater ? "scheduled" : "all");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not schedule email."); }
     finally { setBusy(false); }
   }
@@ -70,12 +70,12 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
           <Icon name="paperclip" size={24} />{attachments.length > 0 && <span className="attachment-count">{attachments.length}</span>}
         </button>
         <button type="button" className={`icon-button ${selectedLater ? "active" : ""}`} title="Choose send time" onClick={() => setLaterOpen(!laterOpen)}><Icon name="clock" size={24} /></button>
-        <button className="send-button" disabled={busy}>{busy ? "Scheduling…" : selectedLater ? "Send Later" : "Send"}</button>
+        <button className="send-button" disabled={busy}>{busy ? "Sending…" : selectedLater ? "Send Later" : "Send"}</button>
       </div>
     </header>
     {error && <p className="form-error compose-error" role="alert">{error}</p>}
     <div className="compose-content">
-      <div className="compose-line from-line"><label htmlFor="from">From</label><select id="from" required value={sender} onChange={e => setSender(e.target.value)}>{settings.senders.map(address => <option key={address}>{address}</option>)}</select></div>
+      <div className="compose-line from-line"><label htmlFor="from">From</label><select id="from" required value={sender} onChange={e => setSender(e.target.value)}>{settings.senders.length > 1 && <option value="rotate">All senders (rotate)</option>}{settings.senders.map(address => <option key={address}>{address}</option>)}</select></div>
       <div className="compose-line to-line">
         <label htmlFor="to">To</label>
         <div className="to-entry">
@@ -107,7 +107,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
     </div>
     {laterOpen && <div className="send-later-popover" role="dialog" aria-label="Send Later">
       <h2>Send Later</h2><label className="date-picker">Pick date &amp; time <input type="datetime-local" value={laterAt} onChange={e => setLaterAt(e.target.value)} /><Icon name="calendar" size={18} /></label>
-      <button type="button" onClick={() => preset(9)}>Tomorrow</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
+      <button type="button" onClick={() => setLaterAt(localDateTime(new Date(Date.now() + 300000)))}>In 5 minutes</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
       <div className="popover-actions"><button type="button" onClick={() => setLaterOpen(false)}>Cancel</button><button type="button" className="send-button" onClick={() => {
         if (!Number.isFinite(new Date(laterAt).getTime()) || new Date(laterAt).getTime() <= Date.now()) return setError("Choose a future date and time.");
         setConfirmedLaterAt(laterAt); setSelectedLater(true); setLaterOpen(false);

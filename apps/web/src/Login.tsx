@@ -8,9 +8,7 @@ export function Login({
   onLogin: () => void;
   initialError: string;
 }) {
-  const [mode, setMode] = useState<"login" | "register">("login"),
-    [email, setEmail] = useState(""),
-    [name, setName] = useState(""),
+  const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [error, setError] = useState(initialError),
     [busy, setBusy] = useState(false);
@@ -19,9 +17,9 @@ export function Login({
     setBusy(true);
     setError("");
     try {
-      await api(`/auth/${mode}`, {
+      await api("/auth/email", {
         method: "POST",
-        body: JSON.stringify({ email, name, password }),
+        body: JSON.stringify({ email, password }),
       });
       onLogin();
     } catch (cause) {
@@ -33,7 +31,7 @@ export function Login({
   return (
     <main className="login-screen">
       <section className="login-card">
-        <h1>{mode === "login" ? "Login" : "Create account"}</h1>
+        <h1>Login</h1>
         <a className="google-button" href="/auth/google">
           <GoogleMark /> Login with Google
         </a>
@@ -41,16 +39,6 @@ export function Login({
           <span>or sign up through email</span>
         </div>
         <form onSubmit={submit}>
-          {mode === "register" && (
-            <input
-              aria-label="Name"
-              placeholder="Name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-              minLength={2}
-            />
-          )}
           <input
             type="email"
             aria-label="Email ID"
@@ -66,7 +54,7 @@ export function Login({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
-            minLength={mode === "register" ? 8 : 1}
+            minLength={1}
           />
           {error && (
             <p className="form-error" role="alert">
@@ -74,24 +62,10 @@ export function Login({
             </p>
           )}
           <button className="login-submit" disabled={busy}>
-            {busy
-              ? "Please wait…"
-              : mode === "login"
-                ? "Login"
-                : "Create account"}
+            {busy ? "Please wait…" : "Login"}
           </button>
         </form>
-        <button
-          className="login-switch"
-          onClick={() => {
-            setMode(mode === "login" ? "register" : "login");
-            setError("");
-          }}
-        >
-          {mode === "login"
-            ? "New here? Create an account"
-            : "Already have an account? Login"}
-        </button>
+        <p className="login-hint">New email? This form creates your account. Use at least 8 characters for a new password.</p>
       </section>
     </main>
   );
