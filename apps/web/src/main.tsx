@@ -10,9 +10,10 @@ import "./style.css";
 const emptyCounts = { scheduled: 0, sent: 0, all: 0, archived: 0, trash: 0 };
 const labels: Record<Folder, string> = { scheduled: "Scheduled", sent: "Sent", all: "All emails", archived: "Archived", trash: "Trash" };
 const isFolder = (view: View): view is Folder => view in labels;
+function savedFolder(): Folder { const value = localStorage.getItem("reachinbox:last-folder"); return value && value in labels ? value as Folder : "scheduled"; }
 function App() {
   const [user, setUser] = useState<User | null | undefined>(), [settings, setSettings] = useState<Settings | null>(null),
-    [view, setView] = useState<View>("scheduled"), [previous, setPrevious] = useState<Folder>("scheduled"),
+    [view, setView] = useState<View>(savedFolder), [previous, setPrevious] = useState<Folder>(savedFolder),
     [selected, setSelected] = useState<Email | null>(null), [items, setItems] = useState<Email[]>([]),
     [counts, setCounts] = useState<Record<Folder, number>>(emptyCounts), [search, setSearch] = useState(""),
     [starredOnly, setStarredOnly] = useState(false), [filtersOpen, setFiltersOpen] = useState(false),
@@ -47,10 +48,11 @@ function App() {
   }, [user?.id, refresh]);
   function navigate(next: View) {
     if (isFolder(view)) setPrevious(view);
+    if (isFolder(next)) localStorage.setItem("reachinbox:last-folder", next);
     setView(next); setSearch(""); setSelected(null); setFiltersOpen(false); setLimit(100); setError("");
   }
   async function logout() {
-    try { await api("/auth/logout", { method: "POST" }); setView("scheduled"); setPrevious("scheduled"); setSelected(null); setItems([]); setCounts(emptyCounts); setSearch(""); setStarredOnly(false); setError(""); setNotice(""); setUser(null); }
+    try { await api("/auth/logout", { method: "POST" }); localStorage.removeItem("reachinbox:last-folder"); setView("scheduled"); setPrevious("scheduled"); setSelected(null); setItems([]); setCounts(emptyCounts); setSearch(""); setStarredOnly(false); setError(""); setNotice(""); setUser(null); }
     catch (cause) { setError(String(cause)); }
   }
   async function toggleStar(email: Email) {
@@ -80,7 +82,7 @@ function App() {
           <button className={`icon-button ${filtersOpen || starredOnly || !["scheduled", "sent"].includes(view) ? "active" : ""}`} title="Filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><Icon name="filter" size={20} /></button>
           {filtersOpen && <div className="filter-menu" role="dialog" aria-label="Email filters">
             <div className="filter-heading"><strong>Filters</strong><button className="icon-button" title="Close filters" onClick={() => setFiltersOpen(false)}><Icon name="close" size={16} /></button></div>
-            {(Object.entries(labels) as [Folder, string][]).map(([folder, label]) => <button key={folder} className={view === folder ? "selected" : ""} onClick={() => { setView(folder); setSelected(null); setLimit(100); setNotice(""); }}>{label}<span>{counts[folder]}</span></button>)}
+            {(Object.entries(labels) as [Folder, string][]).map(([folder, label]) => <button key={folder} className={view === folder ? "selected" : ""} onClick={() => { localStorage.setItem("reachinbox:last-folder", folder); setView(folder); setSelected(null); setLimit(100); setNotice(""); }}>{label}<span>{counts[folder]}</span></button>)}
             <label className="star-filter"><input type="checkbox" checked={starredOnly} onChange={event => { setStarredOnly(event.target.checked); setLimit(100); }} /> Starred only</label>
             <button className="filter-done" onClick={() => setFiltersOpen(false)}>Done</button>
           </div>}

@@ -78,7 +78,8 @@ Ethereal is fake SMTP: it does **not** deliver to Gmail or other real inboxes. O
 - Message detail has Star, Archive/Unarchive, Trash/Restore, the user avatar, sender/recipient details, sanitized body, attachment download and delivery preview.
 - Trashing a pending message cancels its delivery. Restoring it resumes pending delivery (immediately if overdue). Already-sent messages are never resent by restore. A message already in SMTP delivery cannot be cancelled mid-send.
 - Archive only organizes the mailbox; an archived scheduled email still sends. Search and pagination work within the selected mailbox. Counts come from SQL aggregates and are not limited by page size.
-- Slack connection, Google account linking, queue dashboard and Logout live in the account menu. Logout clears the session and mailbox UI state.
+- Slack connection, Google account linking, queue dashboard and Logout live in the account menu. The last mailbox folder is remembered across refreshes, so a completed send remains easy to find in Sent or All emails.
+- The single email/password form signs in an existing account or creates a new one when the email is unused. New passwords must have at least eight characters. Google-only accounts must use Google sign-in.
 
 ## Environment and OAuth
 
@@ -102,6 +103,8 @@ For Google, register a Web OAuth client with `http://localhost:4000/auth/google/
 For Slack, add **and save** `http://localhost:4000/auth/slack/callback` under the same app's **OAuth & Permissions → Redirect URLs**. A generic `https://ngrok-free.app/slack/oauth_redirect` is not equivalent. The app's client ID must match the credentials in `.env`. Add the `incoming-webhook` scope. Connect Slack lets the user pick a workspace/channel; the backend stores its returned webhook and makes a real HTTP POST when the hourly limit is reached. Disconnect clears the connection; reconnect takes effect without redeploying. No connected Slack means no notification and no crash.
 
 After editing environment values, restart the API and worker. A Slack `redirect_uri` mismatch is a provider app configuration error; changing a frontend button cannot register the callback with Slack.
+
+To configure three independent Ethereal accounts without printing credentials, run `node deploy/provision-ethereal.mjs apps/api/.env` locally (or point it at the private production env on the server), then restart API and worker. Compose defaults to “All senders (rotate)” when more than one sender is configured. Each recipient is assigned the next sender in order, and the Redis hourly limit is keyed per sender.
 
 ## Scheduling, persistence and rate limits
 
@@ -177,7 +180,7 @@ Back up PostgreSQL and the volumes before upgrades. Do not run `down -v` on a de
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Password accounts and session lifecycle |
+| `POST /auth/email`, `POST /auth/logout` | Single-form signup/sign-in and session lifecycle (`/auth/register` and `/auth/login` remain available) |
 | `GET /auth/google`, `/auth/google/callback` | Google OAuth |
 | `GET /auth/slack`, `/auth/slack/callback` | Slack OAuth |
 | `POST /api/slack/disconnect` | Disconnect Slack |
