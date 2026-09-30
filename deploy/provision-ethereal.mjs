@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, renameSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, chmodSync, chownSync, statSync } from "node:fs";
 
 const path = process.argv[2];
 if (!path) throw new Error("Usage: node deploy/provision-ethereal.mjs PATH_TO_PRIVATE_ENV");
@@ -32,7 +32,9 @@ for (const [key, value] of Object.entries(updates)) {
   content = pattern.test(content) ? content.replace(pattern, line) : `${content.trimEnd()}\n${line}\n`;
 }
 const temp = `${path}.tmp-${process.pid}`;
+const { uid, gid } = statSync(path);
 writeFileSync(temp, content, { mode: 0o600 });
 chmodSync(temp, 0o600);
+if (process.getuid?.() === 0) chownSync(temp, uid, gid);
 renameSync(temp, path);
 console.log(`Configured ${senders.length} independent Ethereal SMTP accounts in ${path}. Credentials were not printed.`);
