@@ -48,16 +48,16 @@ function AccountMenu({
                 Slack connected
                 {user.slack_channel ? ` · ${user.slack_channel}` : ""}
               </div>
-              <a href="/auth/slack">Reconnect Slack</a>
-              <button onClick={disconnect}>Disconnect Slack</button>
+              <a href="/auth/slack"><Icon name="plug" size={18} /> Reconnect Slack</a>
+              <button onClick={disconnect}><Icon name="plug" size={18} /> Disconnect Slack</button>
             </>
           ) : (
-            <a href="/auth/slack">Connect Slack</a>
+            <a href="/auth/slack"><Icon name="plug" size={18} /> Connect Slack</a>
           )}
-          <a href="/admin/queues" target="_blank" rel="noreferrer">
-            BullMQ queue dashboard
+          <a href="/admin/queues/">
+            <Icon name="queue" size={18} /> Queue dashboard
           </a>
-          <button onClick={logout}>Log out</button>
+          <button onClick={logout}><Icon name="logout" size={18} /> Log out</button>
           {error && <p className="form-error">{error}</p>}
         </div>
       )}

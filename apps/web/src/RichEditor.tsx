@@ -12,22 +12,22 @@ export function RichEditor({ onChange }: { onChange: (text: string, html: string
     remember();
   }
   function command(name: string, value?: string) {
-    editor.current?.focus();
     if (selection.current) {
       const current = window.getSelection();
       current?.removeAllRanges();
       current?.addRange(selection.current);
     }
+    editor.current?.focus();
     document.execCommand(name, false, value);
     emit();
   }
   const button = (label: string, title: string, cmd: string, value?: string) => (
-    <button type="button" title={title} aria-label={title} onMouseDown={event => event.preventDefault()} onClick={() => command(cmd, value)}>{label}</button>
+    <button type="button" title={title} aria-label={title} onPointerDown={event => { remember(); event.preventDefault(); }} onClick={() => command(cmd, value)}>{label}</button>
   );
   return <div className="editor-shell" onClick={event => { if (event.target === event.currentTarget) editor.current?.focus(); }}>
     <div ref={editor} className="rich-editor" role="textbox" aria-label="Email body" aria-multiline="true"
       contentEditable suppressContentEditableWarning data-placeholder="Type Your Reply..."
-      onInput={emit} onKeyUp={remember} onMouseUp={remember} onBlur={remember} />
+      onInput={emit} onKeyUp={remember} onMouseUp={remember} />
     <div className="editor-toolbar" role="toolbar" aria-label="Formatting toolbar">
       {button("↶", "Undo", "undo")}{button("↷", "Redo", "redo")}<span />
       <select aria-label="Text size" defaultValue="3" onChange={event => command("fontSize", event.target.value)}>

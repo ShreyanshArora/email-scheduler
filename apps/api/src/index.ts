@@ -59,6 +59,7 @@ boardAdapter.setBasePath("/admin/queues");
 createBullBoard({
   queues: [new BullMQAdapter(emailQueue)],
   serverAdapter: boardAdapter,
+  options: { uiConfig: { boardTitle: "🎯 ReachInbox queues" } },
 });
 app.use("/admin/queues", required, async (req, res, next) => {
   try {

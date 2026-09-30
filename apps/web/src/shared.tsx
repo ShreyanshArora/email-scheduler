@@ -28,6 +28,8 @@ export type Email = {
   status: "scheduled" | "sending" | "sent" | "failed";
   error: string | null;
   preview_url: string | null;
+  smtp_message_id: string | null;
+  send_attempts: number;
   starred: boolean;
 };
 export type Folder = "scheduled" | "sent" | "all" | "archived" | "trash";
@@ -67,6 +69,10 @@ type IconName =
   | "archive"
   | "trash"
   | "restore"
+  | "plug"
+  | "queue"
+  | "logout"
+  | "compose"
   | "close";
 export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
   const shapes: Record<IconName, ReactNode> = {
@@ -99,6 +105,10 @@ export function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
     paperclip: (
       <path d="m20.5 11.5-8.8 8.8a6 6 0 0 1-8.5-8.5l9.5-9.5a4 4 0 0 1 5.7 5.7l-9.6 9.6a2 2 0 0 1-2.8-2.8l8.9-8.9" />
     ),
+    plug: <path d="M8 3v5m8-5v5M6 8h12v4a6 6 0 0 1-12 0V8Zm6 10v3" />,
+    queue: <><rect x="3" y="4" width="5" height="5" rx="1"/><rect x="3" y="11" width="5" height="5" rx="1"/><rect x="3" y="18" width="5" height="3" rx="1"/><path d="M12 6h9m-9 7h9m-9 6h9"/></>,
+    logout: <><path d="M11 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6"/><path d="M15 7l5 5-5 5m5-5H9"/></>,
+    compose: <><path d="M12 20h9"/><path d="m16 4 4 4-11 11-5 1 1-5L16 4Z"/></>,
     chevron: <path d="m5 9 7 7 7-7" />,
     filter: <path d="M3 4h18l-7 8v7l-4 2v-9z" />,
     refresh: (

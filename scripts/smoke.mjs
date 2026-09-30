@@ -35,16 +35,16 @@ async function request(path, options = {}) {
 try {
   const loginEmail = `auth-${randomUUID()}@example.test`;
   const password = `Smoke-${randomUUID()}`;
-  const registered = await fetch(api + '/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, name: 'Smoke Login', password }) });
+  const registered = await fetch(api + '/auth/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, password }) });
   assert.equal(registered.status, 201);
   const registeredCookie = registered.headers.get('set-cookie')?.split(';')[0];
   assert(registeredCookie);
   const registeredProfile = await fetch(api + '/api/me', { headers: { Cookie: registeredCookie } });
   assert.equal(registeredProfile.status, 200);
   passwordTenantId = (await registeredProfile.json()).id;
-  const rejected = await fetch(api + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, password: 'wrong-password' }) });
+  const rejected = await fetch(api + '/auth/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, password: 'wrong-password' }) });
   assert.equal(rejected.status, 401);
-  const loggedIn = await fetch(api + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, password }) });
+  const loggedIn = await fetch(api + '/auth/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: loginEmail, password }) });
   assert.equal(loggedIn.status, 200);
   console.log('PASS: email/password account creation, login, and invalid-password rejection');
   await db.query(
