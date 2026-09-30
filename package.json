@@ -10,6 +10,7 @@
     "db:migrate": "npm run db:migrate -w @reachinbox/api",
     "demo:seed": "npm run demo:seed -w @reachinbox/api",
     "smoke": "node scripts/smoke.mjs",
+    "test:google-link": "DOTENV_CONFIG_PATH=apps/api/.env tsx scripts/google-link.test.ts",
     "verify:full": "node scripts/full-check.mjs",
     "demo:populate": "node scripts/populate-demo.mjs",
     "check:deploy": "node scripts/check-deploy.mjs",

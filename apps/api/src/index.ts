@@ -13,6 +13,7 @@ import { connection, emailQueue } from "./queue";
 import { indexEmails, searchIds } from "./search";
 import { RedisSessionStore } from "./session-store";
 import { hashPassword, verifyPassword } from "./password";
+import { findOrCreateGoogleTenant } from "./google-account";
 
 declare module "express-session" {
   interface SessionData {
@@ -238,31 +239,20 @@ app.get("/auth/google/callback", async (req, res, next) => {
     const profile = ticket.getPayload();
     if (!profile?.email || !profile.email_verified)
       throw new Error("A verified Google email is required");
-    const linkingTenantId = req.session.tenantId ?? null;
-    const {
-      rows: [tenant],
-    } = await db.query(
-      "INSERT INTO tenants(id,email,name,avatar_url,google_sub) VALUES($1,$2,$3,$4,$5) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,avatar_url=EXCLUDED.avatar_url,google_sub=EXCLUDED.google_sub WHERE tenants.google_sub=EXCLUDED.google_sub OR (tenants.google_sub IS NULL AND (tenants.password_hash IS NULL OR tenants.id=$6)) RETURNING id",
-      [
-        randomUUID(),
-        profile.email.toLowerCase(),
-        profile.name ?? profile.email,
-        profile.picture ?? null,
-        profile.sub,
-        linkingTenantId,
-      ],
-    );
-    if (!tenant)
-      return res
-        .status(409)
-        .json({
-          error:
-            "This email already has an account. Sign in with your password before connecting Google.",
-        });
-    await signIn(req, tenant.id);
+    const tenantId = await findOrCreateGoogleTenant({
+      sub: profile.sub,
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture,
+    });
+    await signIn(req, tenantId);
     res.redirect(config.webUrl);
   } catch (error) {
-    next(error);
+    console.error("Google sign-in failed:", error);
+    const url = new URL(config.webUrl);
+    url.searchParams.set("authError", error instanceof Error && error.message === "This email is linked to a different Google account."
+      ? error.message : "Google sign-in could not be completed. Please try again.");
+    res.redirect(url.toString());
   }
 });
 

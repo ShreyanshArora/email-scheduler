@@ -78,7 +78,7 @@ Ethereal is fake SMTP: it does **not** deliver to Gmail or other real inboxes. O
 - Message detail has Star, Archive/Unarchive, Trash/Restore, the user avatar, sender/recipient details, sanitized body, attachment download and delivery preview.
 - Trashing a pending message cancels its delivery. Restoring it resumes pending delivery (immediately if overdue). Already-sent messages are never resent by restore. A message already in SMTP delivery cannot be cancelled mid-send.
 - Archive only organizes the mailbox; an archived scheduled email still sends. Search and pagination work within the selected mailbox. Counts come from SQL aggregates and are not limited by page size.
-- Slack connection, Google account linking, queue dashboard and Logout live in the account menu. The last mailbox folder is remembered across refreshes, so a completed send remains easy to find in Sent or All emails.
+- Slack connection, queue dashboard and Logout live in the account menu. The last mailbox folder is remembered across refreshes, so a completed send remains easy to find in Sent or All emails.
 - The single email/password form signs in an existing account or creates a new one when the email is unused. New passwords must have at least eight characters. Google-only accounts must use Google sign-in.
 
 ## Environment and OAuth
@@ -98,7 +98,7 @@ The existing local `apps/api/.env` is ignored by Git. Never commit secrets.
 | `MIN_SEND_DELAY_MS` | Minimum global gap between SMTP starts, default 2000 ms |
 | `MAX_EMAILS_PER_HOUR_PER_SENDER` | Per-tenant/sender hourly ceiling, default 200 |
 
-For Google, register a Web OAuth client with `http://localhost:4000/auth/google/callback`. Login uses a real authorization code and verified ID token. An existing password account must explicitly sign in before linking Google.
+For Google, register a Web OAuth client with `http://localhost:4000/auth/google/callback`. Login uses a real authorization code and verified ID token. When the verified Google email matches an existing password account, Google sign-in links to that same account automatically; the password remains usable and its mail history stays intact. A Google identity already linked to a different account cannot claim that email.
 
 For Slack, add **and save** `http://localhost:4000/auth/slack/callback` under the same app's **OAuth & Permissions → Redirect URLs**. A generic `https://ngrok-free.app/slack/oauth_redirect` is not equivalent. The app's client ID must match the credentials in `.env`. Add the `incoming-webhook` scope. Connect Slack lets the user pick a workspace/channel; the backend stores its returned webhook and makes a real HTTP POST when the hourly limit is reached. Disconnect clears the connection; reconnect takes effect without redeploying. No connected Slack means no notification and no crash.
 
