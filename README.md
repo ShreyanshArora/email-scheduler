@@ -125,7 +125,7 @@ An atomic Redis Lua counter is keyed by tenant, sender and UTC hour, shared acro
 
 For 1,000+ simultaneous emails, BullMQ retains all jobs while concurrency, spacing and hourly counters pace delivery. No in-memory counter decides the hourly limit. Failed mail remains visible in Sent. Elasticsearch indexes scheduled and completed rows; PostgreSQL text matching provides a fallback during indexing lag/outages.
 
-Slack alerts are deduplicated per tenant/sender/hour. Webhook HTTP failure releases the deduplication marker so a later limit hit can retry. The webhook call has a ten-second timeout.
+Slack alerts are deduplicated per tenant/sender/campaign/hour, so a new campaign that hits an already exhausted sender's quota still receives one alert, while a large campaign does not spam Slack for every recipient. Webhook HTTP failure releases the deduplication marker so a later limit hit can retry. The webhook call has a ten-second timeout.
 
 ## Automated verification
 

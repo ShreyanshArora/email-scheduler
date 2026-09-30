@@ -42,7 +42,7 @@ function smtpFor(sender: string) {
   return transports.get(key)!;
 }
 
-async function notifyLimit(tenantId: string, sender: string) {
+async function notifyLimit(tenantId: string, sender: string, campaignId: string | null) {
   const {
     rows: [tenant],
   } = await db.query("SELECT slack_webhook_url FROM tenants WHERE id=$1", [
@@ -50,7 +50,7 @@ async function notifyLimit(tenantId: string, sender: string) {
   ]);
   if (!tenant?.slack_webhook_url) return;
   const hour = new Date().toISOString().slice(0, 13);
-  const key = `email-rate-alert:${tenantId}:${sender.toLowerCase()}:${hour}`;
+  const key = `email-rate-alert:${tenantId}:${sender.toLowerCase()}:${campaignId ?? "legacy"}:${hour}`;
   if (!(await connection.set(key, "1", "PX", 3600000, "NX"))) return;
   try {
     const response = await fetch(tenant.slack_webhook_url, {
@@ -117,7 +117,7 @@ async function processEmail(job: Job<EmailJob>, token?: string) {
         deferred.id,
       ]);
       await indexEmail({ ...claimed, status: "scheduled", scheduled_at: nextAt });
-      await notifyLimit(claimed.tenant_id, claimed.sender);
+      await notifyLimit(claimed.tenant_id, claimed.sender, claimed.campaign_id);
       return;
     }
 
@@ -147,7 +147,7 @@ async function processEmail(job: Job<EmailJob>, token?: string) {
       [claimed.id, info.messageId, nodemailer.getTestMessageUrl(info) || null],
     );
     await indexEmail(sent);
-    if (deferMs === -1) await notifyLimit(claimed.tenant_id, claimed.sender);
+    if (deferMs === -1) await notifyLimit(claimed.tenant_id, claimed.sender, claimed.campaign_id);
   } catch (error) {
     if (!smtpAttempted) {
       // No SMTP request happened, so infrastructure failures can safely retry.
