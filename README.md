@@ -191,11 +191,11 @@ Back up PostgreSQL and the volumes before upgrades. Do not run `down -v` on a de
 | `PATCH /api/emails/:id/star` | Set `{starred:true/false}` |
 | `PATCH /api/emails/:id/mailbox` | Set `{mailbox:"inbox"/"archived"/"trash"}` |
 | `GET /api/emails/:id/attachments/:index` | Authenticated attachment download |
-| `GET /admin/queues` | Session-protected live BullMQ board (production administrator allowlist) |
+| `GET /admin/queues` | Session-protected, read-only live BullMQ board available to signed-in users |
 
 ## Scope and remaining production trade-offs
 
-This is an outgoing email scheduler, as required by the assignment. It does not ingest real incoming mail. Slack webhook credentials are stored in PostgreSQL; encrypting them with a managed key is recommended before multi-tenant public production use. The operations dashboard is restricted by `QUEUE_ADMIN_EMAILS` in production. Elasticsearch indexing failure falls back to SQL search; a durable search-index outbox would strengthen eventual reindexing guarantees. The design uses responsive equivalents on small screens instead of scaling a desktop frame down with browser zoom.
+This is an outgoing email scheduler, as required by the assignment. It does not ingest real incoming mail. Slack webhook credentials are stored in PostgreSQL; encrypting them with a managed key is recommended before multi-tenant public production use. The queue dashboard is read-only and available to signed-in accounts; it shows shared queue metadata across accounts, so restrict it per tenant before using this as a public multi-tenant service. Elasticsearch indexing failure falls back to SQL search; a durable search-index outbox would strengthen eventual reindexing guarantees. The design uses responsive equivalents on small screens instead of scaling a desktop frame down with browser zoom.
 
 The repository is private, Mitrajit has collaborator access, and Yadav036 has a pending invitation. Record and upload the demo video before submitting the form. Slack authorization is separate for local and deployed accounts; connect Slack on the hosted app to receive alerts from that deployment.
 

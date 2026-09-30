@@ -64,9 +64,9 @@ export function AccountMenu({
           ) : (
             <a href="/auth/slack"><Icon name="plug" size={18} /> Connect Slack</a>
           )}
-          {user.queue_admin && <a href="/admin/queues/" target="_blank" rel="noopener noreferrer">
+          <a href="/admin/queues/" target="_blank" rel="noopener noreferrer">
             <Icon name="queue" size={18} /> Queue dashboard
-          </a>}
+          </a>
           <button onClick={logout}><Icon name="logout" size={18} /> Log out</button>
           {error && <p className="form-error">{error}</p>}
         </div>
