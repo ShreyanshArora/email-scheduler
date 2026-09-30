@@ -1,18 +1,28 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Brand } from "./Brand";
 import { api, Avatar, Icon } from "./shared";
 import type { User, Folder, View } from "./shared";
-function AccountMenu({
+export function AccountMenu({
   user,
   logout,
   refreshUser,
+  compact = false,
 }: {
   user: User;
   logout: () => void;
   refreshUser: () => void;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false),
     [error, setError] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) setOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", dismiss); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
+  }, [open]);
   async function disconnect() {
     try {
       await api("/api/slack/disconnect", { method: "POST" });
@@ -25,23 +35,23 @@ function AccountMenu({
     }
   }
   return (
-    <div className="account-wrap">
+    <div className={`account-wrap ${compact ? "compact-account" : ""}`} ref={menuRef}>
       <button
         className="account-card"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
+        aria-label={compact ? "Open profile menu" : undefined}
       >
         <Avatar user={user} />
-        <span className="account-copy">
+        {!compact && <span className="account-copy">
           <strong>{user.name}</strong>
           <small>{user.email}</small>
-        </span>
-        <Icon name="chevron" size={19} />
+        </span>}
+        {!compact && <Icon name="chevron" size={19} />}
       </button>
       {open && (
         <div className="account-menu">
           <div className="account-menu-heading">{user.email}</div>
-          {!user.google_connected && <a href="/auth/google">Connect Google</a>}
           {user.slack_connected ? (
             <>
               <div className="slack-connected">

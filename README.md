@@ -104,7 +104,7 @@ For Slack, add **and save** `http://localhost:4000/auth/slack/callback` under th
 
 After editing environment values, restart the API and worker. A Slack `redirect_uri` mismatch is a provider app configuration error; changing a frontend button cannot register the callback with Slack.
 
-To configure three independent Ethereal accounts without printing credentials, run `node deploy/provision-ethereal.mjs apps/api/.env` locally (or point it at the private production env on the server), then restart API and worker. Compose defaults to “All senders (rotate)” when more than one sender is configured. Each recipient is assigned the next sender in order, and the Redis hourly limit is keyed per sender.
+To configure three independent Ethereal accounts without printing credentials, run `node deploy/provision-ethereal.mjs apps/api/.env` locally (or point it at the private production env on the server), then restart API and worker. Compose defaults to “All senders (rotate)” when more than one sender is configured. Each recipient is assigned the next sender in order, and the Redis hourly limit is keyed per sender. Selecting a future date in Compose switches the action to **Send Later**; clicking outside the picker closes it without discarding the selected time. After submission, the mailbox shows live sent, sending, waiting, and failed counts from the database and a delivery progress bar. The latest campaign remains visible across a page reload until dismissed.
 
 ## Scheduling, persistence and rate limits
 

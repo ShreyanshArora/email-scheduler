@@ -1,10 +1,19 @@
-import { Avatar, Icon } from "./shared";
+import { useEffect, useRef } from "react";
+import { Icon } from "./shared";
 import type { Email, User } from "./shared";
-export function Detail({ email, user, close, star, move, error }: {
+import { AccountMenu } from "./Sidebar";
+export function Detail({ email, user, close, star, move, error, logout, refreshUser }: {
   email: Email; user: User; close: () => void; star: (email: Email) => void;
-  move: (email: Email, mailbox: Email["mailbox"]) => void; error: string;
+  move: (email: Email, mailbox: Email["mailbox"]) => void; error: string; logout: () => void; refreshUser: () => void;
 }) {
   const date = email.sent_at ?? email.scheduled_at;
+  const headersRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => { if (headersRef.current?.open && !headersRef.current.contains(event.target as Node)) headersRef.current.open = false; };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && headersRef.current) headersRef.current.open = false; };
+    document.addEventListener("pointerdown", dismiss); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
+  }, []);
   return <main className="detail-page">
     <header className="detail-header">
       <button className="icon-button" onClick={close} aria-label="Back"><Icon name="back" size={25} /></button>
@@ -15,7 +24,7 @@ export function Detail({ email, user, close, star, move, error }: {
           <button className="icon-button" onClick={() => move(email, email.mailbox === "archived" ? "inbox" : "archived")} title={email.mailbox === "archived" ? "Unarchive email" : "Archive email"}><Icon name="archive" /></button>
           <button className="icon-button" onClick={() => move(email, "trash")} title="Move to Trash" disabled={email.status === "sending"}><Icon name="trash" /></button>
         </>}
-        <span className="detail-divider" /><Avatar user={user} />
+        <span className="detail-divider" /><AccountMenu user={user} logout={logout} refreshUser={refreshUser} compact />
       </div>
     </header>
     {error && <div className="banner-error" role="alert">{error}</div>}
@@ -23,7 +32,7 @@ export function Detail({ email, user, close, star, move, error }: {
       <div className="sender-avatar">{email.sender.charAt(0).toUpperCase()}</div>
       <div className="detail-message">
         <div className="detail-meta"><strong>{email.sender.split("@")[0]}</strong><span>&lt;{email.sender}&gt;</span><time>{new Date(date).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" })}</time></div>
-        <details className="detail-to"><summary>to {email.recipient}</summary><dl className="message-headers">
+        <details ref={headersRef} className="detail-to"><summary>to {email.recipient}</summary><dl className="message-headers">
           <dt>from:</dt><dd>{email.sender}</dd><dt>to:</dt><dd>{email.recipient}</dd>
           {email.sent_at && <><dt>sent:</dt><dd>{new Date(email.sent_at).toLocaleString()}</dd></>}
           <dt>planned:</dt><dd>{new Date(email.scheduled_at).toLocaleString()}</dd>

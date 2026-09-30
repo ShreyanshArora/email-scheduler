@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, emailsFromText, Icon, localDateTime } from "./shared";
 import type { Folder, Settings } from "./shared";
 import { RichEditor } from "./RichEditor";
@@ -13,7 +13,17 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
     [limit, setLimit] = useState(String(settings.max_hourly_limit)), [expanded, setExpanded] = useState(false);
   const [laterOpen, setLaterOpen] = useState(false), [laterAt, setLaterAt] = useState(localDateTime(new Date(Date.now() + 300000))),
     [selectedLater, setSelectedLater] = useState(false), [confirmedLaterAt, setConfirmedLaterAt] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [key] = useState(() => crypto.randomUUID()), fileRef = useRef<HTMLInputElement>(null), attachmentRef = useRef<HTMLInputElement>(null);
+  const [key] = useState(() => crypto.randomUUID()), fileRef = useRef<HTMLInputElement>(null), attachmentRef = useRef<HTMLInputElement>(null), laterRef = useRef<HTMLDivElement>(null), clockRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!laterOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!laterRef.current?.contains(event.target as Node) && !clockRef.current?.contains(event.target as Node)) setLaterOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setLaterOpen(false); };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
+  }, [laterOpen]);
   const allRecipients = useMemo(() => Array.from(new Set([...recipients, ...emailsFromText(draft)])), [recipients, draft]);
   function commitDraft() {
     if (!draft.trim()) return true;
@@ -44,7 +54,8 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
     })));
     setAttachments(current => [...current, ...added]); setError("");
   }
-  function preset(hour: number) { const next = new Date(); next.setDate(next.getDate() + 1); next.setHours(hour, 0, 0, 0); setLaterAt(localDateTime(next)); }
+  function chooseLater(value: string) { setLaterAt(value); setConfirmedLaterAt(value); setSelectedLater(true); }
+  function preset(hour: number) { const next = new Date(); next.setDate(next.getDate() + 1); next.setHours(hour, 0, 0, 0); chooseLater(localDateTime(next)); }
   async function send(event: React.FormEvent) {
     event.preventDefault(); setError("");
     if (!commitDraft()) return;
@@ -54,9 +65,10 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
     if (!Number.isFinite(start.getTime()) || (selectedLater && start.getTime() <= Date.now())) return setError("Choose a future date and time.");
     setBusy(true);
     try {
-      await api("/api/emails/schedule", { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({
+      const result = await api<{ count: number; emails: { campaign_id: string }[] }>("/api/emails/schedule", { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({
         recipients: allRecipients, subject, body, bodyHtml, attachments, sender, startsAt: start.toISOString(), delayMs: Number(delay) * 1000, hourlyLimit: Number(limit),
       }) });
+      if (result.emails[0]?.campaign_id) sessionStorage.setItem("reachinbox:active-campaign", result.emails[0].campaign_id);
       done(selectedLater ? "scheduled" : "all");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not schedule email."); }
     finally { setBusy(false); }
@@ -69,7 +81,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
         <button type="button" className={`icon-button ${attachments.length ? "active" : ""}`} title="Attach files (5 MB maximum)" onClick={() => attachmentRef.current?.click()}>
           <Icon name="paperclip" size={24} />{attachments.length > 0 && <span className="attachment-count">{attachments.length}</span>}
         </button>
-        <button type="button" className={`icon-button ${selectedLater ? "active" : ""}`} title="Choose send time" onClick={() => setLaterOpen(!laterOpen)}><Icon name="clock" size={24} /></button>
+        <button ref={clockRef} type="button" className={`icon-button ${selectedLater ? "active" : ""}`} title="Choose send time" onClick={() => setLaterOpen(!laterOpen)}><Icon name="clock" size={24} /></button>
         <button className="send-button" disabled={busy}>{busy ? "Sending…" : selectedLater ? "Send Later" : "Send"}</button>
       </div>
     </header>
@@ -105,9 +117,9 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
       </div>)}</div>}
       {selectedLater && <p className="scheduled-note">Scheduled to start {new Date(confirmedLaterAt).toLocaleString()} <button type="button" onClick={() => setSelectedLater(false)}>Send now instead</button></p>}
     </div>
-    {laterOpen && <div className="send-later-popover" role="dialog" aria-label="Send Later">
-      <h2>Send Later</h2><label className="date-picker"><input aria-label="Pick date and time" type="datetime-local" value={laterAt} onChange={e => setLaterAt(e.target.value)} /><Icon name="calendar" size={18} /></label>
-      <button type="button" onClick={() => setLaterAt(localDateTime(new Date(Date.now() + 300000)))}>In 5 minutes</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
+    {laterOpen && <div ref={laterRef} className="send-later-popover" role="dialog" aria-label="Send Later">
+      <h2>Send Later</h2><label className="date-picker"><input aria-label="Pick date and time" type="datetime-local" value={laterAt} onChange={e => chooseLater(e.target.value)} /><Icon name="calendar" size={18} /></label>
+      <button type="button" onClick={() => chooseLater(localDateTime(new Date(Date.now() + 300000)))}>In 5 minutes</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
       <div className="popover-actions"><button type="button" onClick={() => setLaterOpen(false)}>Cancel</button><button type="button" className="send-button" onClick={() => {
         if (!Number.isFinite(new Date(laterAt).getTime()) || new Date(laterAt).getTime() <= Date.now()) return setError("Choose a future date and time.");
         setConfirmedLaterAt(laterAt); setSelectedLater(true); setLaterOpen(false);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { api, formatDate, Icon, recipientName } from "./shared";
 import type { Email, Folder, Settings, User, View } from "./shared";
@@ -10,6 +10,7 @@ import "./style.css";
 const emptyCounts = { scheduled: 0, sent: 0, all: 0, archived: 0, trash: 0 };
 const labels: Record<Folder, string> = { scheduled: "Scheduled", sent: "Sent", all: "All emails", archived: "Archived", trash: "Trash" };
 const isFolder = (view: View): view is Folder => view in labels;
+type CampaignProgress = { total: number; sent: number; sending: number; scheduled: number; failed: number; starts_at: string };
 function savedFolder(): Folder { const value = localStorage.getItem("reachinbox:last-folder"); return value && value in labels ? value as Folder : "scheduled"; }
 function App() {
   const [user, setUser] = useState<User | null | undefined>(), [settings, setSettings] = useState<Settings | null>(null),
@@ -18,7 +19,9 @@ function App() {
     [counts, setCounts] = useState<Record<Folder, number>>(emptyCounts), [search, setSearch] = useState(""),
     [starredOnly, setStarredOnly] = useState(false), [filtersOpen, setFiltersOpen] = useState(false),
     [refresh, setRefresh] = useState(0), [loading, setLoading] = useState(false), [error, setError] = useState(""),
-    [notice, setNotice] = useState(""), [limit, setLimit] = useState(100), [more, setMore] = useState(false);
+    [notice, setNotice] = useState(""), [limit, setLimit] = useState(100), [more, setMore] = useState(false),
+    [campaignId, setCampaignId] = useState(() => sessionStorage.getItem("reachinbox:active-campaign")),
+    [progress, setProgress] = useState<CampaignProgress | null>(null), filterRef = useRef<HTMLDivElement>(null);
   async function refreshUser() { const profile = await api<User>("/api/me"); setUser(profile); setSettings(await api<Settings>("/api/settings")); }
   useEffect(() => {
     const authError = new URLSearchParams(location.search).get("authError");
@@ -46,13 +49,30 @@ function App() {
     const load = async () => { try { const next = await api<Record<Folder, number>>("/api/email-counts"); if (!cancelled) setCounts(next); } catch { /* list reports API errors */ } };
     void load(); const timer = setInterval(load, 2000); return () => { cancelled = true; clearInterval(timer); };
   }, [user?.id, refresh]);
+  useEffect(() => {
+    if (!user || !campaignId) return;
+    let cancelled = false;
+    const load = async () => {
+      try { const next = await api<CampaignProgress>(`/api/campaigns/${campaignId}/progress`); if (!cancelled) setProgress(next); }
+      catch { if (!cancelled) { setCampaignId(null); setProgress(null); sessionStorage.removeItem("reachinbox:active-campaign"); } }
+    };
+    void load(); const timer = setInterval(load, 1500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [user?.id, campaignId]);
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const dismiss = (event: PointerEvent) => { if (!filterRef.current?.contains(event.target as Node)) setFiltersOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setFiltersOpen(false); };
+    document.addEventListener("pointerdown", dismiss); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
+  }, [filtersOpen]);
   function navigate(next: View) {
     if (isFolder(view)) setPrevious(view);
     if (isFolder(next)) localStorage.setItem("reachinbox:last-folder", next);
     setView(next); setSearch(""); setSelected(null); setFiltersOpen(false); setLimit(100); setError("");
   }
   async function logout() {
-    try { await api("/auth/logout", { method: "POST" }); localStorage.removeItem("reachinbox:last-folder"); setView("scheduled"); setPrevious("scheduled"); setSelected(null); setItems([]); setCounts(emptyCounts); setSearch(""); setStarredOnly(false); setError(""); setNotice(""); setUser(null); }
+    try { await api("/auth/logout", { method: "POST" }); localStorage.removeItem("reachinbox:last-folder"); sessionStorage.removeItem("reachinbox:active-campaign"); setCampaignId(null); setProgress(null); setView("scheduled"); setPrevious("scheduled"); setSelected(null); setItems([]); setCounts(emptyCounts); setSearch(""); setStarredOnly(false); setError(""); setNotice(""); setUser(null); }
     catch (cause) { setError(String(cause)); }
   }
   async function toggleStar(email: Email) {
@@ -71,14 +91,14 @@ function App() {
   }
   if (user === undefined) return <div className="loading-screen">Loading…</div>;
   if (!user) return <Login onLogin={() => refreshUser().catch(cause => setError(String(cause)))} initialError={error} />;
-  if (view === "compose") return settings ? <Compose settings={settings} close={() => navigate(previous)} done={folder => { setRefresh(value => value + 1); navigate(folder); setNotice("Emails queued successfully. They move to Sent automatically after delivery."); }} /> : <div className="loading-screen">Loading settings…</div>;
-  if (view === "detail" && selected) return <Detail email={selected} user={user} close={() => navigate(previous)} star={toggleStar} move={move} error={error} />;
+  if (view === "compose") return settings ? <Compose settings={settings} close={() => navigate(previous)} done={folder => { setCampaignId(sessionStorage.getItem("reachinbox:active-campaign")); setProgress(null); setRefresh(value => value + 1); navigate(folder); setNotice(folder === "scheduled" ? "Email scheduled for the selected date and time." : "Sending started. Delivery progress is shown below."); }} /> : <div className="loading-screen">Loading settings…</div>;
+  if (view === "detail" && selected) return <Detail email={selected} user={user} close={() => navigate(previous)} star={toggleStar} move={move} error={error} logout={logout} refreshUser={() => refreshUser().catch(cause => setError(String(cause)))} />;
   return <div className="app-shell">
     <Sidebar user={user} view={view} counts={counts} navigate={next => { setStarredOnly(false); setNotice(""); navigate(next); }} logout={logout} refreshUser={() => refreshUser().catch(cause => setError(String(cause)))} />
     <main className="inbox-main">
       <header className="inbox-toolbar">
         <label className="search-box"><Icon name="search" size={20} /><input value={search} onChange={event => { setSearch(event.target.value); setLimit(100); }} placeholder="Search" aria-label="Search emails" /></label>
-        <div className="filter-wrap">
+        <div className="filter-wrap" ref={filterRef}>
           <button className={`icon-button ${filtersOpen || starredOnly || !["scheduled", "sent"].includes(view) ? "active" : ""}`} title="Filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><Icon name="filter" size={20} /></button>
           {filtersOpen && <div className="filter-menu" role="dialog" aria-label="Email filters">
             <div className="filter-heading"><strong>Filters</strong><button className="icon-button" title="Close filters" onClick={() => setFiltersOpen(false)}><Icon name="close" size={16} /></button></div>
@@ -91,13 +111,17 @@ function App() {
       </header>
       {isFolder(view) && !["scheduled", "sent"].includes(view) && <div className="folder-heading">{labels[view]} {starredOnly && "· Starred"}</div>}
       {notice && <div className="notice" role="status">{notice}<button className="icon-button" title="Dismiss notification" onClick={() => setNotice("")}><Icon name="close" size={16} /></button></div>}
+      {progress && <div className="sending-progress" role="status" aria-live="polite">
+        <div className="sending-progress-copy"><strong>{progress.sent + progress.failed === progress.total ? "Delivery complete" : new Date(progress.starts_at).getTime() > Date.now() ? "Scheduled to send" : "Sending emails"}</strong><span>{progress.sent} sent · {progress.sending} sending · {progress.scheduled} waiting{progress.failed ? ` · ${progress.failed} failed` : ""}</span><button className="icon-button" aria-label="Dismiss delivery progress" onClick={() => { sessionStorage.removeItem("reachinbox:active-campaign"); setCampaignId(null); setProgress(null); }}><Icon name="close" size={16} /></button></div>
+        <div className="sending-progress-track"><span style={{ width: `${Math.round((progress.sent + progress.failed) / progress.total * 100)}%` }} /></div>
+      </div>}
       {error && <div className="banner-error" role="alert">{error}</div>}
       {loading ? <div className="list-state">Loading emails…</div> : items.length === 0 ? <div className="list-state"><div className="empty-icon"><Icon name={view === "scheduled" ? "clock" : view === "sent" ? "send" : "mail"} size={27} /></div><h2>{search ? "No matching emails" : view === "scheduled" ? "No scheduled emails" : view === "sent" ? "No sent emails" : `No ${starredOnly ? "starred" : view} emails yet`}</h2><p>{view === "scheduled" ? "Emails you schedule appear here with the time they go out." : view === "trash" ? "Deleted emails appear here and can be restored." : "Your emails will appear here."}</p>{!search && (view === "scheduled" || view === "sent") && <button className="empty-compose" onClick={() => navigate("compose")}><Icon name="compose" size={18} /> Compose</button>}</div> : <div className="message-list">
         {items.map(email => <div className="message-row" key={email.id}>
           <button className="row-open" onClick={() => { setSelected(email); setPrevious(view as Folder); setView("detail"); setError(""); }}>
             <span className="row-to" title={email.recipient}>To: {recipientName(email.recipient)}</span>
             <span className={`status-pill ${["scheduled", "sending"].includes(email.status) ? "scheduled" : ""} ${email.status === "failed" ? "failed" : ""}`} title={new Date(email.sent_at ?? email.scheduled_at).toLocaleString()}>
-              {email.mailbox === "trash" && email.status === "scheduled" ? "Cancelled" : ["scheduled", "sending"].includes(email.status) ? <><Icon name="clock" size={13} />{formatDate(email.scheduled_at)}</> : email.status === "failed" ? "Failed" : "Sent"}
+              {email.mailbox === "trash" && email.status === "scheduled" ? "Cancelled" : email.status === "sending" ? <><span className="sending-spinner" />Sending</> : email.status === "scheduled" ? <><Icon name="clock" size={13} />{formatDate(email.scheduled_at)}</> : email.status === "failed" ? "Failed" : "Sent"}
             </span>
             <span className="row-subject"><strong>{email.subject}</strong><span> - {email.body.replace(/\s+/g, " ")}</span></span>
             {email.sent_at && <time className="row-time">{new Date(email.sent_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time>}

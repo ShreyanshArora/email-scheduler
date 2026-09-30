@@ -561,6 +561,21 @@ app.post("/api/emails/schedule", required, async (req, res, next) => {
   }
 });
 
+app.get("/api/campaigns/:id/progress", required, async (req, res, next) => {
+  try {
+    const { rows: [progress] } = await db.query(`
+      SELECT count(*)::int AS total,
+        count(*) FILTER (WHERE status='sent')::int AS sent,
+        count(*) FILTER (WHERE status='sending')::int AS sending,
+        count(*) FILTER (WHERE status='scheduled')::int AS scheduled,
+        count(*) FILTER (WHERE status='failed')::int AS failed,
+        min(scheduled_at) AS starts_at
+      FROM emails WHERE campaign_id=$1 AND tenant_id=$2`, [req.params.id, req.session.tenantId]);
+    if (!progress?.total) return res.status(404).json({ error: "Campaign not found" });
+    res.json(progress);
+  } catch (error) { next(error); }
+});
+
 app.get("/api/emails", required, async (req, res, next) => {
   try {
     const statuses = String(req.query.status ?? "")
