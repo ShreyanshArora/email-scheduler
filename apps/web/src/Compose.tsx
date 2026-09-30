@@ -121,7 +121,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
       {selectedLater && <p className="scheduled-note">Scheduled to start {new Date(confirmedLaterAt).toLocaleString()} <button type="button" onClick={() => setSelectedLater(false)}>Send now instead</button></p>}
     </div>
     {laterOpen && <div ref={laterRef} className="send-later-popover" role="dialog" aria-label="Send Later">
-      <h2>Send Later</h2><label className={`date-picker ${laterAt ? "" : "empty"}`}>{!laterAt && <span className="date-placeholder">Pick date &amp; time</span>}<input aria-label="Pick date and time" type="datetime-local" value={laterAt} onChange={e => chooseLater(e.target.value)} /><Icon name="calendar" size={18} /></label>
+      <h2>Send Later</h2><label className={`date-picker ${laterAt ? "" : "empty"}`}>{!laterAt && <span className="date-placeholder">Pick date &amp; time</span>}<input aria-label="Pick date and time" type="datetime-local" value={laterAt} onChange={e => chooseLater(e.target.value)} /></label>
       <button type="button" onClick={() => preset(9)}>Tomorrow</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
       <div className="popover-actions"><button type="button" onClick={() => setLaterOpen(false)}>Cancel</button><button type="button" className="send-button" onClick={() => {
         if (!Number.isFinite(new Date(laterAt).getTime()) || new Date(laterAt).getTime() <= Date.now()) return setError("Choose a future date and time.");

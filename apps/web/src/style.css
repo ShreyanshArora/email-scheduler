@@ -746,9 +746,9 @@ button:disabled {
   font-size: 15px;
   cursor: pointer;
 }
-.date-picker svg {
-  margin-left: auto;
-  color: #9da9ba;
+.date-picker input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: .65;
 }
 .send-later-popover > button {
   border: 0;
