@@ -10,7 +10,7 @@ export function Detail({ email, user, close, star, move, error }: {
       <button className="icon-button" onClick={close} aria-label="Back"><Icon name="back" size={25} /></button>
       <h1>{email.subject}</h1>
       <div className="detail-actions">
-        {email.preview_url && <a className="preview-button" href={email.preview_url} target="_blank" rel="noopener noreferrer">Open Ethereal</a>}
+        {email.status === "sent" && <a className="preview-button" href={email.preview_url ?? "https://ethereal.email/"} target="_blank" rel="noopener noreferrer">{email.preview_url ? "Open Ethereal preview" : "Open Ethereal inbox"}</a>}
         <button className={`icon-button ${email.starred ? "starred" : ""}`} onClick={() => star(email)} title={email.starred ? "Unstar email" : "Star email"}><Icon name="star" /></button>
         {email.mailbox === "trash" ? <button className="icon-button" onClick={() => move(email, "inbox")} title="Restore email"><Icon name="restore" /></button> : <>
           <button className="icon-button" onClick={() => move(email, email.mailbox === "archived" ? "inbox" : "archived")} title={email.mailbox === "archived" ? "Unarchive email" : "Archive email"}><Icon name="archive" /></button>
