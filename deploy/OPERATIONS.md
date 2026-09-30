@@ -1,6 +1,6 @@
 # Production operations
 
-Deployment is deferred until a domain and monthly budget are chosen. No AWS resources have been provisioned by these scripts.
+The live deployment runs on EC2 `i-019c3e8d97766a6ce` in `ap-south-1`, behind the Elastic IP `65.2.236.100` and the HTTPS hostname `65-2-236-100.sslip.io`. The hostname is temporary; update `PUBLIC_URL` and both OAuth callback registrations when moving to a domain you control.
 
 Check the existing AWS identity without displaying credentials:
 
