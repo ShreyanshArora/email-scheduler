@@ -1,10 +1,13 @@
 import { readFileSync, writeFileSync, renameSync, chmodSync } from "node:fs";
-import dotenv from "dotenv";
 
 const path = process.argv[2];
 if (!path) throw new Error("Usage: node deploy/provision-ethereal.mjs PATH_TO_PRIVATE_ENV");
 const source = readFileSync(path, "utf8");
-const env = dotenv.parse(source);
+const env = Object.fromEntries(source.split(/\r?\n/).filter(line => line && !line.startsWith("#") && line.includes("=")).map(line => {
+  const index = line.indexOf("=");
+  const value = line.slice(index + 1);
+  return [line.slice(0, index), /^(['"]).*\1$/.test(value) ? value.slice(1, -1) : value];
+}));
 if (!env.SMTP_USER || !env.SMTP_PASS) throw new Error("The first Ethereal SMTP account must already be configured.");
 const existing = env.SMTP_ACCOUNTS_JSON ? JSON.parse(env.SMTP_ACCOUNTS_JSON) : {};
 const accounts = { [env.SMTP_USER.toLowerCase()]: { user: env.SMTP_USER, pass: env.SMTP_PASS }, ...existing };
