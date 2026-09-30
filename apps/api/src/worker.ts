@@ -50,7 +50,7 @@ async function notifyLimit(tenantId: string, sender: string, campaignId: string 
   ]);
   if (!tenant?.slack_webhook_url) return;
   const hour = new Date().toISOString().slice(0, 13);
-  const key = `email-rate-alert:${tenantId}:${sender.toLowerCase()}:${campaignId ?? "legacy"}:${hour}`;
+  const key = `email-rate-alert:${tenantId}:${campaignId ?? `legacy-${sender.toLowerCase()}`}:${hour}`;
   if (!(await connection.set(key, "1", "PX", 3600000, "NX"))) return;
   try {
     const response = await fetch(tenant.slack_webhook_url, {
@@ -58,7 +58,7 @@ async function notifyLimit(tenantId: string, sender: string, campaignId: string 
       headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(10000),
       body: JSON.stringify({
-        text: `ReachInbox: ${sender} reached its hourly email limit. Remaining emails were deferred.`,
+        text: `ReachInbox: hourly delivery limit reached for a campaign using ${sender}. Remaining emails were deferred to the next hour.`,
       }),
     });
     if (!response.ok || (await response.text()) !== "ok")
@@ -96,6 +96,7 @@ async function processEmail(job: Job<EmailJob>, token?: string) {
     const deferMs = await reserveSend(
       claimed.tenant_id,
       claimed.sender,
+      claimed.campaign_id,
       claimed.hourly_limit,
     );
     if (deferMs > 0) {

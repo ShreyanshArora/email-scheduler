@@ -121,11 +121,11 @@ Workers atomically claim a scheduled row before sending. Duplicate queue jobs ca
 
 Failures before SMTP begins can safely return to Scheduled and be reconciled. A crash or error after SMTP begins can have an ambiguous outcome; such messages are not automatically resent, to avoid duplicates. Orphaned in-flight rows are marked Failed after their BullMQ job is no longer active. SMTP has no provider idempotency key, so exactly-once delivery at the SMTP acknowledgement crash boundary cannot be guaranteed.
 
-An atomic Redis Lua counter is keyed by tenant, sender and UTC hour, shared across worker instances. Compose may choose a lower hourly limit. When exhausted, work stays scheduled for the next hour instead of failing. A second Lua reservation spaces SMTP starts globally. Worker concurrency is configurable. Initial campaign times also incorporate the chosen per-email delay; after congestion, the global minimum gap remains enforced. The order of equally due jobs can vary across workers.
+An atomic Redis Lua reservation checks both tenant/sender/hour and tenant/campaign/hour counters, shared across worker instances. The Compose hourly limit therefore applies to the whole campaign even when senders rotate, while no individual sender can exceed that limit either. When exhausted, work stays scheduled for the next hour instead of failing. A second Lua reservation spaces SMTP starts globally. Worker concurrency is configurable. Initial campaign times also incorporate the chosen per-email delay; after congestion, the global minimum gap remains enforced. The order of equally due jobs can vary across workers.
 
 For 1,000+ simultaneous emails, BullMQ retains all jobs while concurrency, spacing and hourly counters pace delivery. No in-memory counter decides the hourly limit. Failed mail remains visible in Sent. Elasticsearch indexes scheduled and completed rows; PostgreSQL text matching provides a fallback during indexing lag/outages.
 
-Slack alerts are deduplicated per tenant/sender/campaign/hour, so a new campaign that hits an already exhausted sender's quota still receives one alert, while a large campaign does not spam Slack for every recipient. Webhook HTTP failure releases the deduplication marker so a later limit hit can retry. The webhook call has a ten-second timeout.
+Slack alerts are deduplicated per tenant/campaign/hour, so a new campaign that hits an already exhausted quota still receives one alert, while a large campaign does not spam Slack for every recipient. Webhook HTTP failure releases the deduplication marker so a later limit hit can retry. The webhook call has a ten-second timeout.
 
 ## Automated verification
 

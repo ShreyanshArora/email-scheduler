@@ -118,8 +118,8 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
       <div className="compose-line subject-line"><label htmlFor="subject">Subject</label><input id="subject" required value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" /></div>
       <div className="compose-options">
         <label htmlFor="delay">Delay between 2 emails</label><input id="delay" type="number" min="0" step="1" required value={delay} onChange={e => setDelay(e.target.value)} />
-        <label htmlFor="limit">Hourly Limit</label><input id="limit" type="number" min="1" max={settings.max_hourly_limit} required value={limit} onChange={e => setLimit(e.target.value)} />
-        <span className="option-hint">seconds · {allRecipients.length} recipients</span>
+        <label htmlFor="limit">Hourly Limit</label><input id="limit" title="Maximum emails per hour for this campaign, across all senders" type="number" min="1" max={settings.max_hourly_limit} required value={limit} onChange={e => setLimit(e.target.value)} />
+        <span className="option-hint">seconds · {allRecipients.length} recipients · limit across all senders</span>
       </div>
       <RichEditor onChange={(text, html) => { setBody(text); setBodyHtml(html); }} />
       {attachments.length > 0 && <div className="attachments">{attachments.map((file, index) => <div className="attachment-card" key={`${file.name}-${index}`}>

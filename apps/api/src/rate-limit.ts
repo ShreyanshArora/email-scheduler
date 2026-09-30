@@ -1,11 +1,13 @@
 import { connection } from "./queue";
 import { config } from "./config";
-// Atomic reservation: 0 = allowed, -1 = allowed and hourly limit reached,
-// positive = milliseconds until the next UTC hour.
-const LUA = `local count=redis.call('INCR',KEYS[1]); if count==1 then redis.call('PEXPIRE',KEYS[1],ARGV[2]) end; if count<=tonumber(ARGV[1]) then if count==tonumber(ARGV[1]) then return -1 end; return 0 end; redis.call('DECR',KEYS[1]); return tonumber(ARGV[2])`;
+// Reserve both the sender and campaign slots in one Redis operation. A campaign
+// using rotating senders must not bypass the limit entered in Compose.
+// 0 = allowed, -1 = allowed and a limit reached, positive = defer until next hour.
+const LUA = `local sender=tonumber(redis.call('GET',KEYS[1]) or '0'); local campaign=tonumber(redis.call('GET',KEYS[2]) or '0'); local limit=tonumber(ARGV[1]); if sender>=limit or campaign>=limit then return tonumber(ARGV[2]) end; sender=redis.call('INCR',KEYS[1]); if sender==1 then redis.call('PEXPIRE',KEYS[1],ARGV[2]) end; campaign=redis.call('INCR',KEYS[2]); if campaign==1 then redis.call('PEXPIRE',KEYS[2],ARGV[2]) end; if sender==limit or campaign==limit then return -1 end; return 0`;
 export async function reserveSend(
   tenantId: string,
   sender: string,
+  campaignId: string | null,
   limit = config.hourlyLimit,
 ) {
   const now = new Date();
@@ -15,8 +17,9 @@ export async function reserveSend(
   return Number(
     await connection.eval(
       LUA,
-      1,
+      2,
       `email-rate:${tenantId}:${sender.toLowerCase()}:${now.toISOString().slice(0, 13)}`,
+      `email-campaign-rate:${tenantId}:${campaignId ?? `legacy-${sender.toLowerCase()}`}:${now.toISOString().slice(0, 13)}`,
       Math.min(limit, config.hourlyLimit),
       ttl,
     ),
