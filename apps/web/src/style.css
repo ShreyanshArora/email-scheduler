@@ -726,30 +726,33 @@ button:disabled {
   font-weight: 500;
 }
 .date-picker {
-  position: relative;
+  width: 100%;
   height: 40px;
+  padding: 0;
+  background: transparent;
+  border: 0;
   border-bottom: 1px solid #dfe3e8;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   color: #969696;
   font-size: 15px;
-}
-.date-picker input {
-  position: static;
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: #344054;
-  font-size: 15px;
+  text-align: left;
   cursor: pointer;
 }
-.date-picker input::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  opacity: .65;
-}
+.date-picker svg { color: #9da9ba; flex: none; }
+.date-picker-panel { padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+.send-later-popover:has(.date-picker-panel) { height: auto; min-height: 530px; }
+.calendar-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #283448; font-size: 13px; }
+.calendar-heading button { width: 28px; height: 28px; border: 0; border-radius: 6px; background: #f5f7f6; color: #465567; cursor: pointer; font-size: 22px; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.calendar-grid span { padding: 5px 0; color: #8a96a5; font-size: 11px; }
+.calendar-grid button { height: 27px; border: 0; border-radius: 6px; background: transparent; color: #283448; cursor: pointer; font-size: 12px; }
+.calendar-grid button:hover { background: #e6f7ec; }
+.calendar-grid button.selected { background: #05a83e; color: white; }
+.calendar-grid button:disabled { color: #bdc4ca; cursor: default; }
+.calendar-time { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; font-size: 13px; color: #465567; }
+.calendar-time input { height: 30px; border: 1px solid #dfe3e8; border-radius: 6px; padding: 0 5px; color: #283448; font: inherit; }
 .send-later-popover > button {
   border: 0;
   background: transparent;
@@ -1206,6 +1209,4 @@ button:disabled {
 .filter-choice { display:flex; align-items:center; gap:9px; padding:9px 6px; font-size:14px; cursor:pointer; }
 .filter-choice span { margin-left:auto; color:#8994a2; }
 .filter-choice input { accent-color:#04a93c; }
-.date-picker .date-placeholder { position:absolute; left:0; pointer-events:none; color:#969696; }
-.date-picker.empty input:not(:focus) { color:transparent; }
 .rich-editor i, .rich-editor em, .email-body i, .email-body em { font-style:italic; }

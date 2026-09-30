@@ -12,6 +12,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
   const [delay, setDelay] = useState(String(Math.ceil(settings.min_send_delay_ms / 1000))),
     [limit, setLimit] = useState(String(settings.max_hourly_limit)), [expanded, setExpanded] = useState(false);
   const [laterOpen, setLaterOpen] = useState(false), [laterAt, setLaterAt] = useState(""),
+    [pickerOpen, setPickerOpen] = useState(false), [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
     [selectedLater, setSelectedLater] = useState(false), [confirmedLaterAt, setConfirmedLaterAt] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [key] = useState(() => crypto.randomUUID()), fileRef = useRef<HTMLInputElement>(null), attachmentRef = useRef<HTMLInputElement>(null), laterRef = useRef<HTMLDivElement>(null), clockRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -57,8 +58,16 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
     })));
     setAttachments(current => [...current, ...added]); setError("");
   }
-  function chooseLater(value: string) { setLaterAt(value); setConfirmedLaterAt(value); setSelectedLater(true); }
+  function chooseLater(value: string) { setLaterAt(value); }
   function preset(hour: number) { const next = new Date(); next.setDate(next.getDate() + 1); next.setHours(hour, 0, 0, 0); chooseLater(localDateTime(next)); }
+  const pickerDate = laterAt.slice(0, 10);
+  const pickerTime = laterAt.slice(11, 16) || "10:00";
+  const monthDays = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+  const firstWeekday = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
+  function setPickerDay(day: number) {
+    const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+    chooseLater(`${localDateTime(date).slice(0, 10)}T${pickerTime}`);
+  }
   async function send(event: React.FormEvent) {
     event.preventDefault(); setError("");
     if (!commitDraft()) return;
@@ -121,7 +130,13 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
       {selectedLater && <p className="scheduled-note">Scheduled to start {new Date(confirmedLaterAt).toLocaleString()} <button type="button" onClick={() => setSelectedLater(false)}>Send now instead</button></p>}
     </div>
     {laterOpen && <div ref={laterRef} className="send-later-popover" role="dialog" aria-label="Send Later">
-      <h2>Send Later</h2><label className={`date-picker ${laterAt ? "" : "empty"}`}>{!laterAt && <span className="date-placeholder">Pick date &amp; time</span>}<input aria-label="Pick date and time" type="datetime-local" value={laterAt} onChange={e => chooseLater(e.target.value)} /></label>
+      <h2>Send Later</h2>
+      <button type="button" className="date-picker" aria-expanded={pickerOpen} onClick={() => setPickerOpen(open => !open)}><span>{laterAt ? new Date(laterAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Pick date & time"}</span><Icon name="calendar" size={18} /></button>
+      {pickerOpen && <div className="date-picker-panel">
+        <div className="calendar-heading"><button type="button" aria-label="Previous month" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>‹</button><strong>{calendarMonth.toLocaleString(undefined, { month: "long", year: "numeric" })}</strong><button type="button" aria-label="Next month" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>›</button></div>
+        <div className="calendar-grid">{["S", "M", "T", "W", "T", "F", "S"].map((name, index) => <span key={index}>{name}</span>)}{Array.from({ length: firstWeekday }, (_, index) => <span key={`pad-${index}`} />)}{Array.from({ length: monthDays }, (_, index) => { const day = index + 1; const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day); const value = localDateTime(date).slice(0, 10); return <button type="button" key={day} className={value === pickerDate ? "selected" : ""} disabled={date.getTime() + 86400000 <= Date.now()} onClick={() => setPickerDay(day)}>{day}</button>; })}</div>
+        <label className="calendar-time">Time <input aria-label="Scheduled time" type="time" value={pickerTime} onChange={event => { const date = pickerDate || localDateTime(new Date()).slice(0, 10); chooseLater(`${date}T${event.target.value}`); }} /></label>
+      </div>}
       <button type="button" onClick={() => preset(9)}>Tomorrow</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
       <div className="popover-actions"><button type="button" onClick={() => setLaterOpen(false)}>Cancel</button><button type="button" className="send-button" onClick={() => {
         if (!Number.isFinite(new Date(laterAt).getTime()) || new Date(laterAt).getTime() <= Date.now()) return setError("Choose a future date and time.");
