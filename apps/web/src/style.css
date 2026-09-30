@@ -893,7 +893,7 @@ button:disabled {
   .wordmark {
     height: auto;
     font-size: 22px;
-    width: 65px;
+    width: 155px;
     letter-spacing: -3px;
   }
   .account-wrap {
@@ -1168,8 +1168,12 @@ button:disabled {
 
 .compose-error { margin: 0 auto 10px; width: min(1020px, calc(100% - 40px)); background: #fff4f2; border-radius: 8px; padding: 10px 14px; }
 
-.brand-logo { display: block; width: 78px; height: 30px; color: #080808; }
-@media(max-width:680px) { .brand-logo { width: 60px; height: 24px; } }
+.brand-logo { display: flex; align-items: center; gap: 9px; height: 38px; color: #172132; }
+.brand-logo svg { width: 38px; height: 38px; flex: none; }
+.brand-logo span { display: flex; flex-direction: column; gap: 1px; letter-spacing: 0; line-height: 1; }
+.brand-logo strong { font: 700 17px/1.1 system-ui, sans-serif; }
+.brand-logo small { font: 500 11px/1 system-ui, sans-serif; color: #667383; letter-spacing: .12em; text-transform: uppercase; }
+@media(max-width:680px) { .brand-logo { height: 30px; } .brand-logo svg { width: 30px; height: 30px; } .brand-logo strong { font-size: 12px; } .brand-logo small { font-size: 8px; } }
 
 /* Message headers open without shifting the message body. */
 .detail-to { position: relative; }
