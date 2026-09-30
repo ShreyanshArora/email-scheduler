@@ -17,8 +17,12 @@ compose=(docker compose --env-file .env.production -f compose.production.yml --p
 if ! "${compose[@]}" up --build -d; then
   git checkout --detach "$previous"
   "${compose[@]}" up --build -d
+  "${compose[@]}" up -d --force-recreate web
   exit 1
 fi
+# Nginx resolves the API container when it starts. Recreate it after the API so
+# a changed Docker IP cannot leave /health and API routes pointing at the old one.
+"${compose[@]}" up -d --force-recreate web
 for attempt in $(seq 1 60); do
   if "${compose[@]}" exec -T web wget -q -O /dev/null http://127.0.0.1/health; then
     echo "Deployed $revision"; exit 0
@@ -28,4 +32,5 @@ done
 echo 'Health check failed; restoring previous application revision'
 git checkout --detach "$previous"
 "${compose[@]}" up --build -d
+"${compose[@]}" up -d --force-recreate web
 exit 1
