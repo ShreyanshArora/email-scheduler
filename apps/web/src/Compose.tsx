@@ -11,7 +11,7 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
     [attachments, setAttachments] = useState<Attachment[]>([]);
   const [delay, setDelay] = useState(String(Math.ceil(settings.min_send_delay_ms / 1000))),
     [limit, setLimit] = useState(String(settings.max_hourly_limit)), [expanded, setExpanded] = useState(false);
-  const [laterOpen, setLaterOpen] = useState(false), [laterAt, setLaterAt] = useState(localDateTime(new Date(Date.now() + 300000))),
+  const [laterOpen, setLaterOpen] = useState(false), [laterAt, setLaterAt] = useState(""),
     [selectedLater, setSelectedLater] = useState(false), [confirmedLaterAt, setConfirmedLaterAt] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [key] = useState(() => crypto.randomUUID()), fileRef = useRef<HTMLInputElement>(null), attachmentRef = useRef<HTMLInputElement>(null), laterRef = useRef<HTMLDivElement>(null), clockRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -37,10 +37,13 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
   async function upload(file?: File) {
     if (!file) return;
     if (file.size > MAX_BYTES) return setError("Choose a CSV or text file of 5 MB or less.");
-    const addresses = emailsFromText(await file.text());
+    const text = await file.text();
+    const detected = (text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? []).map(value => value.toLowerCase());
+    const addresses = emailsFromText(text);
+    const duplicates = detected.length - addresses.filter(address => !recipients.includes(address)).length;
     if (!addresses.length) return setError("No email addresses were found in this file.");
     setRecipients(current => Array.from(new Set([...current, ...addresses])));
-    setFilename(`${file.name} · ${addresses.length} addresses detected`); setError("");
+    setFilename(`${file.name} · ${addresses.length} unique addresses detected${duplicates ? ` · ${duplicates} duplicate ${duplicates === 1 ? "address" : "addresses"} removed` : ""}`); setError("");
   }
   async function attach(files: FileList | null) {
     if (!files) return;
@@ -118,8 +121,8 @@ export function Compose({ settings, close, done }: { settings: Settings; close: 
       {selectedLater && <p className="scheduled-note">Scheduled to start {new Date(confirmedLaterAt).toLocaleString()} <button type="button" onClick={() => setSelectedLater(false)}>Send now instead</button></p>}
     </div>
     {laterOpen && <div ref={laterRef} className="send-later-popover" role="dialog" aria-label="Send Later">
-      <h2>Send Later</h2><label className="date-picker"><input aria-label="Pick date and time" type="datetime-local" value={laterAt} onChange={e => chooseLater(e.target.value)} /><Icon name="calendar" size={18} /></label>
-      <button type="button" onClick={() => chooseLater(localDateTime(new Date(Date.now() + 300000)))}>In 5 minutes</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
+      <h2>Send Later</h2><label className={`date-picker ${laterAt ? "" : "empty"}`}>{!laterAt && <span className="date-placeholder">Pick date &amp; time</span>}<input aria-label="Pick date and time" type="datetime-local" value={laterAt} onChange={e => chooseLater(e.target.value)} /><Icon name="calendar" size={18} /></label>
+      <button type="button" onClick={() => preset(9)}>Tomorrow</button><button type="button" onClick={() => preset(10)}>Tomorrow, 10:00 AM</button><button type="button" onClick={() => preset(11)}>Tomorrow, 11:00 AM</button><button type="button" onClick={() => preset(15)}>Tomorrow, 3:00 PM</button>
       <div className="popover-actions"><button type="button" onClick={() => setLaterOpen(false)}>Cancel</button><button type="button" className="send-button" onClick={() => {
         if (!Number.isFinite(new Date(laterAt).getTime()) || new Date(laterAt).getTime() <= Date.now()) return setError("Choose a future date and time.");
         setConfirmedLaterAt(laterAt); setSelectedLater(true); setLaterOpen(false);

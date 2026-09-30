@@ -589,7 +589,15 @@ app.get("/api/emails", required, async (req, res, next) => {
       jsonb_array_elements(c.attachments) a WHERE c.id=emails.campaign_id),'[]'::jsonb) AS attachments
       FROM emails WHERE tenant_id=$1`;
     const values: unknown[] = [req.session.tenantId];
-    if (mailbox === "all") sql += " AND mailbox<> 'trash'";
+    const folders = String(req.query.folders ?? "").split(",").filter(Boolean);
+    const folderConditions: Record<string, string> = {
+      scheduled: "(mailbox='inbox' AND status IN ('scheduled','sending'))",
+      sent: "(mailbox='inbox' AND status IN ('sent','failed'))",
+      all: "mailbox<>'trash'", archived: "mailbox='archived'", trash: "mailbox='trash'",
+    };
+    if (folders.some(folder => !Object.hasOwn(folderConditions, folder))) return res.status(400).json({ error: "Invalid folder filter" });
+    if (folders.length) sql += ` AND (${folders.map(folder => folderConditions[folder]).join(" OR ")})`;
+    else if (mailbox === "all") sql += " AND mailbox<> 'trash'";
     else { values.push(mailbox); sql += ` AND mailbox=$${values.length}`; }
     if (req.query.starred === "true") sql += " AND starred=true";
     if (statuses.length) {

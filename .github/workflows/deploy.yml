@@ -35,7 +35,7 @@ jobs:
             --document-name AWS-RunShellScript \
             --instance-ids "$AWS_INSTANCE_ID" \
             --comment "Outbox release $GITHUB_SHA" \
-            --parameters "{\"commands\":[\"cd /home/ubuntu/outbox-sde- && sudo -u ubuntu bash deploy/release.sh $GITHUB_SHA\"]}" \
+            --parameters "{\"commands\":[\"cd /home/ubuntu/outbox-sde- && sudo -u ubuntu bash -c 'git fetch origin main && git show $GITHUB_SHA:deploy/release.sh | bash -s -- $GITHUB_SHA'\"]}" \
             --query Command.CommandId --output text)
           for attempt in $(seq 1 150); do
             status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$AWS_INSTANCE_ID" --query Status --output text 2>/dev/null || true)

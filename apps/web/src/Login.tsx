@@ -65,7 +65,6 @@ export function Login({
             {busy ? "Please wait…" : "Login"}
           </button>
         </form>
-        <p className="login-hint">New email? This form creates your account. Use at least 8 characters for a new password.</p>
       </section>
     </main>
   );

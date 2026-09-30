@@ -3,7 +3,7 @@
   font-family: "DM Sans", Arial, sans-serif;
   color: #202939;
   background: #fff;
-  font-synthesis: none;
+  font-synthesis: style;
 }
 * {
   box-sizing: border-box;
@@ -1202,3 +1202,10 @@ button:disabled {
 .send-later-popover { box-shadow: 0 12px 30px #15261a22; }
 .account-menu, .filter-menu { box-shadow: 0 16px 40px #1426191c; }
 @media (max-width: 680px) { .detail-actions .compact-account .avatar { display: block; } .compact-account .account-card { width: 32px; height: 32px; padding: 0; } .sending-progress { margin: 0 10px 10px; } .sending-progress-copy { flex-wrap: wrap; gap: 4px 10px; } }
+
+.filter-choice { display:flex; align-items:center; gap:9px; padding:9px 6px; font-size:14px; cursor:pointer; }
+.filter-choice span { margin-left:auto; color:#8994a2; }
+.filter-choice input { accent-color:#04a93c; }
+.date-picker .date-placeholder { position:absolute; left:0; pointer-events:none; color:#969696; }
+.date-picker.empty input:not(:focus) { color:transparent; }
+.rich-editor i, .rich-editor em, .email-body i, .email-body em { font-style:italic; }

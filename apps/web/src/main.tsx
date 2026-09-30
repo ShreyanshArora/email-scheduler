@@ -17,7 +17,7 @@ function App() {
     [view, setView] = useState<View>(savedFolder), [previous, setPrevious] = useState<Folder>(savedFolder),
     [selected, setSelected] = useState<Email | null>(null), [items, setItems] = useState<Email[]>([]),
     [counts, setCounts] = useState<Record<Folder, number>>(emptyCounts), [search, setSearch] = useState(""),
-    [starredOnly, setStarredOnly] = useState(false), [filtersOpen, setFiltersOpen] = useState(false),
+    [filterFolders, setFilterFolders] = useState<Folder[]>([]), [starredOnly, setStarredOnly] = useState(false), [filtersOpen, setFiltersOpen] = useState(false),
     [refresh, setRefresh] = useState(0), [loading, setLoading] = useState(false), [error, setError] = useState(""),
     [notice, setNotice] = useState(""), [limit, setLimit] = useState(100), [more, setMore] = useState(false),
     [campaignId, setCampaignId] = useState(() => sessionStorage.getItem("reachinbox:active-campaign")),
@@ -34,15 +34,16 @@ function App() {
     async function load() {
       try {
         const params = new URLSearchParams({ mailbox: view === "all" ? "all" : view === "archived" || view === "trash" ? view : "inbox", q: search, starred: String(starredOnly) });
-        if (view === "scheduled") params.set("status", "scheduled,sending");
-        if (view === "sent") params.set("status", "sent,failed");
+        if (filterFolders.length) params.set("folders", filterFolders.join(","));
+        if (!filterFolders.length && view === "scheduled") params.set("status", "scheduled,sending");
+        if (!filterFolders.length && view === "sent") params.set("status", "sent,failed");
         const pages = await Promise.all(Array.from({ length: Math.ceil(limit / 100) }, (_, page) => api<Email[]>(`/api/emails?${params}&offset=${page * 100}`)));
         if (!cancelled) { setItems(pages.flat()); setMore(pages[pages.length - 1].length === 100); setLoading(false); }
       } catch (cause) { if (!cancelled) { setError(cause instanceof Error ? cause.message : "Could not load emails."); setLoading(false); } }
     }
     setLoading(true); const timer = setTimeout(load, search ? 250 : 0), interval = setInterval(load, 2000);
     return () => { cancelled = true; clearTimeout(timer); clearInterval(interval); };
-  }, [user?.id, view, search, starredOnly, refresh, limit]);
+  }, [user?.id, view, search, starredOnly, filterFolders, refresh, limit]);
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -94,7 +95,7 @@ function App() {
   if (view === "compose") return settings ? <Compose settings={settings} close={() => navigate(previous)} done={folder => { setCampaignId(sessionStorage.getItem("reachinbox:active-campaign")); setProgress(null); setRefresh(value => value + 1); navigate(folder); setNotice(folder === "scheduled" ? "Email scheduled for the selected date and time." : "Sending started. Delivery progress is shown below."); }} /> : <div className="loading-screen">Loading settings…</div>;
   if (view === "detail" && selected) return <Detail email={selected} user={user} close={() => navigate(previous)} star={toggleStar} move={move} error={error} logout={logout} refreshUser={() => refreshUser().catch(cause => setError(String(cause)))} />;
   return <div className="app-shell">
-    <Sidebar user={user} view={view} counts={counts} navigate={next => { setStarredOnly(false); setNotice(""); navigate(next); }} logout={logout} refreshUser={() => refreshUser().catch(cause => setError(String(cause)))} />
+    <Sidebar user={user} view={view} counts={counts} navigate={next => { setFilterFolders([]); setStarredOnly(false); setNotice(""); navigate(next); }} logout={logout} refreshUser={() => refreshUser().catch(cause => setError(String(cause)))} />
     <main className="inbox-main">
       <header className="inbox-toolbar">
         <label className="search-box"><Icon name="search" size={20} /><input value={search} onChange={event => { setSearch(event.target.value); setLimit(100); }} placeholder="Search" aria-label="Search emails" /></label>
@@ -102,8 +103,9 @@ function App() {
           <button className={`icon-button ${filtersOpen || starredOnly || !["scheduled", "sent"].includes(view) ? "active" : ""}`} title="Filters" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><Icon name="filter" size={20} /></button>
           {filtersOpen && <div className="filter-menu" role="dialog" aria-label="Email filters">
             <div className="filter-heading"><strong>Filters</strong><button className="icon-button" title="Close filters" onClick={() => setFiltersOpen(false)}><Icon name="close" size={16} /></button></div>
-            {(Object.entries(labels) as [Folder, string][]).map(([folder, label]) => <button key={folder} className={view === folder ? "selected" : ""} onClick={() => { localStorage.setItem("reachinbox:last-folder", folder); setView(folder); setSelected(null); setLimit(100); setNotice(""); }}>{label}<span>{counts[folder]}</span></button>)}
+            {(Object.entries(labels) as [Folder, string][]).map(([folder, label]) => <label key={folder} className="filter-choice"><input type="checkbox" checked={filterFolders.includes(folder)} onChange={() => { setFilterFolders(current => current.includes(folder) ? current.filter(value => value !== folder) : [...current, folder]); setView("all"); setLimit(100); setNotice(""); }} />{label}<span>{counts[folder]}</span></label>)}
             <label className="star-filter"><input type="checkbox" checked={starredOnly} onChange={event => { setStarredOnly(event.target.checked); setLimit(100); }} /> Starred only</label>
+            <button onClick={() => { setFilterFolders([]); setStarredOnly(false); setSearch(""); setLimit(100); }}>Clear filters</button>
             <button className="filter-done" onClick={() => setFiltersOpen(false)}>Done</button>
           </div>}
         </div>

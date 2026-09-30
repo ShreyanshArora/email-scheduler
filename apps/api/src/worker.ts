@@ -63,6 +63,7 @@ async function notifyLimit(tenantId: string, sender: string) {
     });
     if (!response.ok || (await response.text()) !== "ok")
       throw new Error("Slack webhook rejected the notification");
+    console.log(`Slack rate-limit alert delivered for tenant ${tenantId}`);
   } catch (error) {
     await connection.del(key);
     console.error("Slack rate-limit notification failed:", error);
