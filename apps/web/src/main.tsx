@@ -123,7 +123,7 @@ function App() {
           <button className="row-open" onClick={() => { setSelected(email); setPrevious(view as Folder); setView("detail"); setError(""); }}>
             <span className="row-to" title={email.recipient}>To: {recipientName(email.recipient)}</span>
             <span className={`status-pill ${["scheduled", "sending"].includes(email.status) ? "scheduled" : ""} ${email.status === "failed" ? "failed" : ""}`} title={new Date(email.sent_at ?? email.scheduled_at).toLocaleString()}>
-              {email.mailbox === "trash" && email.status === "scheduled" ? "Cancelled" : email.status === "sending" ? <><span className="sending-spinner" />Sending</> : email.status === "scheduled" ? <><Icon name="clock" size={13} />{formatDate(email.scheduled_at)}</> : email.status === "failed" ? "Failed" : "Sent"}
+              {email.mailbox === "trash" && email.status === "scheduled" ? "Cancelled" : email.status === "sending" ? <><span className="sending-spinner" />Sending</> : email.status === "scheduled" ? <><Icon name="clock" size={13} />{email.rate_limited && <strong>Rate-limited</strong>}{formatDate(email.scheduled_at)}</> : email.status === "failed" ? "Failed" : "Sent"}
             </span>
             <span className="row-subject"><strong>{email.subject}</strong><span> - {email.body.replace(/\s+/g, " ")}</span></span>
             {email.sent_at && <time className="row-time">{new Date(email.sent_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</time>}

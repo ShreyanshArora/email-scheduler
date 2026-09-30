@@ -26,6 +26,7 @@ export type Email = {
   scheduled_at: string;
   sent_at: string | null;
   status: "scheduled" | "sending" | "sent" | "failed";
+  rate_limited: boolean;
   error: string | null;
   preview_url: string | null;
   smtp_message_id: string | null;

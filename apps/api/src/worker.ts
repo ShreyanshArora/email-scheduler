@@ -102,7 +102,7 @@ async function processEmail(job: Job<EmailJob>, token?: string) {
     if (deferMs > 0) {
       const nextAt = new Date(Date.now() + deferMs + 50);
       await db.query(
-        "UPDATE emails SET status='scheduled',scheduled_at=$2,sending_started_at=NULL WHERE id=$1",
+        "UPDATE emails SET status='scheduled',scheduled_at=$2,sending_started_at=NULL,rate_limited=true WHERE id=$1",
         [claimed.id, nextAt],
       );
       const deferred = await emailQueue.add(
@@ -117,7 +117,7 @@ async function processEmail(job: Job<EmailJob>, token?: string) {
         claimed.id,
         deferred.id,
       ]);
-      await indexEmail({ ...claimed, status: "scheduled", scheduled_at: nextAt });
+      await indexEmail({ ...claimed, status: "scheduled", scheduled_at: nextAt, rate_limited: true });
       await notifyLimit(claimed.tenant_id, claimed.sender, claimed.campaign_id);
       return;
     }

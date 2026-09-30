@@ -17,6 +17,8 @@ ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS attachments jsonb NOT NULL DEFAUL
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS body_html text;
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS send_attempted_at timestamptz;
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS send_attempts integer NOT NULL DEFAULT 0;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS rate_limited boolean NOT NULL DEFAULT false;
+UPDATE emails SET rate_limited=true WHERE status='scheduled' AND bull_job_id LIKE '%-deferred-%' AND rate_limited=false;
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS mailbox text NOT NULL DEFAULT 'inbox' CHECK (mailbox IN ('inbox','archived','trash'));
 CREATE INDEX IF NOT EXISTS emails_tenant_mailbox ON emails(tenant_id,mailbox);
 CREATE INDEX IF NOT EXISTS emails_tenant_status_schedule ON emails(tenant_id,status,scheduled_at);`);

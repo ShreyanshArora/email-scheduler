@@ -12,6 +12,7 @@ export type EmailRow = {
   campaign_id: string | null;
   sender: string;
   hourly_limit: number;
+  rate_limited: boolean;
   scheduled_at: Date;
   sent_at: Date | null;
   sending_started_at: Date | null;
