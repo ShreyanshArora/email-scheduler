@@ -1,67 +1,59 @@
-# Demo recording — target 4 minutes 20 seconds
+# ReachInbox Scheduler demo — 4 minutes 30 seconds
 
-## Prepare before pressing Record
+Use the local app at http://localhost:5173/ for the restart demonstration. Start the recording with the local demo runner already running, Docker Desktop running, Google login available, and your Slack channel in another tab. Keep `demo-leads-with-duplicates.csv`, `demo-leads.csv`, the README, and the queue dashboard ready. Do not show passwords, `.env` files, OAuth codes, or webhook URLs.
 
-1. Use **http://localhost:5173/** for the restart demonstration. Your local Terminal does not stop the AWS deployment.
-2. Docker Desktop must stay running. Run `npm run build` once after updates, then `npm run demo:run` in Terminal. This starts the API, worker and frontend together. Do not run a second `npm run dev` or worker.
-3. Sign in to your account with Slack connected. Connect Slack from the profile menu and choose the channel where you will show the alert. Keep that Slack channel open in another tab.
-4. Keep `demo-leads-with-duplicates.csv` ready: five rows become **three unique recipients**, with **two duplicate addresses removed**. Keep `demo-leads.csv` ready for the seven-recipient rate-limit example.
-5. In Compose, select **one sender**, not “All senders (rotate)”, for the rate-limit example. Use a sender that has not already reached its limit this UTC hour. Alerts are sent once per sender/hour. Repeating the same test in that hour deliberately does not create another alert.
-6. Run `cd /Users/shreyansh/Desktop/Developer/sde-outbox && npm run demo:stop && npm run demo:run` once in your recording Terminal; the command will then be in history. **Ctrl+C** stops API + worker + frontend gracefully. **Up arrow, Enter** starts them again. Leave Docker running; never use `docker compose down -v`.
-7. Keep the repository README, hosted URL and queue dashboard ready. Record at normal browser zoom.
+Choose a scheduled time about **2 minutes after clicking Send Later**. Stop the local runner **before** that time, and restart it **just after** the time has passed. Do not hard-code 8:02; use the clock at recording time. PostgreSQL and Redis must remain running. The hosted AWS app is separate from the local process and will not stop when you press Ctrl+C.
 
-## 0:00–0:30 — Introduction and architecture
+## 0:00–0:25 — Sign in and overview
 
-Say: “Hi, I’m Shreyansh. This is my full-stack email scheduler for the ReachInbox assignment. The frontend uses React and TypeScript. The Express API stores campaigns and email history in PostgreSQL. BullMQ uses Redis for persistent delayed jobs, and a separate worker sends through Ethereal SMTP. Elasticsearch indexes the messages for search. There are no cron jobs.”
+Show the login page and use Login with Google. Say: “This is ReachInbox Scheduler, a full-stack email scheduling app. I can sign in with Google or email and password. The sidebar shows my Scheduled and Sent messages, and each account has its own mail history.” Open the profile menu and point to the optional Slack connection, the read-only Queue dashboard, and Log out. Do not sign out.
 
-Show the login and dashboard. Say: “Users can sign in with Google or email and password. Each account has its own mail history and optional Slack connection.”
+## 0:25–1:25 — Compose and schedule
 
-## 0:30–1:15 — Compose, CSV and future delivery
+Open Compose. Upload `demo-leads-with-duplicates.csv` (five rows, **three unique recipients**, two duplicates removed). Show that a second address can also be typed and accepted with Enter, but remove it before sending if you want the three-row demonstration. Choose a single sender with available hourly quota. Keep the delay at **2 seconds** and the hourly limit at **200**.
 
-Open Compose. Upload `demo-leads-with-duplicates.csv`. Show the three recipients and duplicate notice. Use subject **Restart demonstration**. Type a short body, select a few words, and click Italic. Leave the hourly limit at **200**, with a **2-second** delay.
+Subject: **ReachInbox Scheduler | Product walkthrough**
 
-Say: “CSV addresses are normalized and deduplicated. I can also add recipients manually, format the message and attach files up to five megabytes. Send starts delivery now; the clock selects a future start time.”
+Body:
 
-Choose a time **one minute ahead** using the clock, click **Done**, then **Send Later**. Briefly show the Scheduled list and timestamp.
+> Hello team,
+>
+> I’m sharing a brief demonstration of the ReachInbox email scheduler. This message was imported from a CSV lead list, scheduled for future delivery, and processed by a persistent BullMQ worker.
+>
+> Best regards,  
+> Shreyansh Arora
 
-## 1:15–2:25 — Restart persistence
+Select a few words and click Italic. Say: “The composer supports rich text, multiple recipients, CSV deduplication, and attachments up to five megabytes. Send starts the queue now; the clock schedules a future start.” Click the clock, choose a date/time **about 2 minutes ahead**, click Done, and then click **Send Later**. Show the three messages under Scheduled with their timestamps. Note the actual due time aloud.
 
-Switch to Terminal and press **Ctrl+C** once. Wait until it says the app has stopped. Leave it stopped until the scheduled time has passed. While waiting, show the README architecture or explain:
+## 1:25–2:00 — Inspect while running
 
-“The API has already committed the campaign to PostgreSQL, and Redis holds the delayed jobs. Stopping the application does not delete either store. The worker drains any active send before shutdown. If the scheduled time passes while the worker is offline, delivery resumes when it comes back. Messages already sent cannot be claimed again.”
+Open the Queue dashboard in a new tab. Say: “BullMQ stores delayed jobs in Redis, while PostgreSQL stores the campaign and email records. The queue dashboard is read-only and shows jobs moving between delayed, active, and completed.” Return to Scheduled. Show search, multi-select filters, and Clear filters. Open a prior sent email and show recipient details, Star, Archive, Trash, and Open in Ethereal if a preview is available.
 
-At or just after the due time, press **Up arrow, Enter** in Terminal. Wait for **Worker ready**. Return to the browser, refresh if it shows a connection error, and open Sent. Show the three messages. Open one and click **Open in Ethereal**.
+## 2:00–3:35 — Prove restart persistence
 
-Say: “These messages survived the restart and were sent after recovery. Ethereal captures the actual SMTP messages; it does not deliver them to real recipients’ inboxes.”
+**Before the due time**, switch to the Terminal running `npm run demo:run` and press **Ctrl+C** once. Wait for the process to stop. Say: “I have stopped the frontend, API, and worker, but PostgreSQL and Redis remain running. The scheduled messages are persisted, so nothing is lost.”
 
-## 2:25–3:15 — Rate limit and live Slack alert
+While waiting for the due time, show the README architecture and the private GitHub repository. Say: “There is no cron polling for delivery. BullMQ holds delayed jobs, the worker has concurrency five, and Redis counters enforce the per-sender hourly limit. On startup, reconciliation repairs any missing jobs.”
 
-Compose another message using `demo-leads.csv`. Choose a different, unused **single sender**, hourly limit **2**, and delay **2**. Click **Send**.
+**After the due time**, press **Up arrow, Enter** in that same Terminal. Wait for “Worker ready.” Refresh the local browser, open Sent, and show the three messages. Open one and choose Open in Ethereal. Say: “The worker resumed after the due time, and the messages were sent once. Ethereal captures SMTP previews; these example recipients do not receive real inbox mail.”
 
-Say: “The worker has configurable concurrency. Atomic Redis counters enforce a limit shared across workers. When the sender reaches two messages this hour, the rest stay scheduled for the next UTC hour. They are not discarded or permanently failed.”
+## 3:35–4:10 — Rate limit and Slack
 
-Show the sent/scheduled counts and the actual Slack alert in the connected channel. Say: “This is the live webhook notification from the worker. It is deduplicated once per sender per hour. Slack is optional: email scheduling still works without a connection.”
+If a live Slack alert is important, choose a **different single sender** that has not already triggered an alert this UTC hour. Compose to `demo-leads.csv` (seven recipients), set hourly limit to **2** and delay to **2 seconds**, and click **Send**. Say: “Two messages can send during this hour. The remaining five are deferred to the next hour rather than dropped. When Slack is connected, the worker posts one rate-limit alert for this sender and hour.” Show the Sent/Scheduled counts and your Slack channel. If an alert already exists for that sender/hour, show it and say that duplicate alerts are intentionally suppressed; do not claim a new alert was sent.
 
-## 3:15–3:50 — Dashboard and queue
+## 4:10–4:30 — Deployment and finish
 
-Show search, select Scheduled and Sent together in Filters, click Clear filters. Open a message and briefly show Star, Archive and Trash. Open Queue dashboard from the profile menu; it opens in a new tab.
+Show the hosted link and README. Say: “The same stack is deployed on AWS EC2 with Docker Compose, persistent Postgres and Redis volumes, and HTTPS. GitHub Actions builds the project, and deployment uses an AWS Systems Manager workflow. The README covers local and production setup, Ethereal, persistence, concurrency, rate limiting, and trade-offs. Thank you.”
 
-Say: “The dashboard supports search, combined filters and recoverable organization. The live BullMQ board shows waiting, delayed, active and completed jobs. The API protects each user’s data, and production queue administration is restricted to configured administrators.”
+## Terminal controls
 
-## 3:50–4:20 — Deployment and close
+- Stop local app, API, and worker: **Ctrl+C** in the demo runner Terminal.
+- Restart in the same Terminal: **Up arrow, Enter**. If the previous command is not in history: `cd /Users/shreyansh/Desktop/Developer/sde-outbox && npm run demo:run`.
+- Never run `docker compose down -v` during this demonstration; it deletes persisted volumes.
 
-Show the hosted app and the latest green GitHub Actions deployment. Show README headings for setup, architecture and trade-offs.
-
-Say: “The complete stack runs on AWS EC2 using Docker Compose, persistent volumes and HTTPS through Caddy. GitHub Actions builds every push and has a manual deployment workflow using AWS identity federation. The README includes setup, environment variables, architecture and verification. SMTP and PostgreSQL cannot share one transaction, so an interrupted send with an uncertain provider outcome is marked for review instead of being automatically resent. Thank you.”
-
-## Submission fields
+## Submission links
 
 - Repository: https://github.com/ShreyanshArora/outbox-sde-
-- Hosted assignment: https://65-2-236-100.sslip.io/
+- Hosted app: https://65-2-236-100.sslip.io/
 - README: https://github.com/ShreyanshArora/outbox-sde-/blob/main/README.md
-- Video: record this walkthrough, upload to Loom or Drive, enable reviewer viewing, then paste that video's URL. The script is not a video.
-- Reviewer access: Mitrajit is a collaborator; Yadav036 was invited and was pending acceptance at the final check.
-
-### Project description
-
-A persistent full-stack email scheduler built with React, TypeScript, Express, PostgreSQL, Redis and BullMQ. It supports Google OAuth, CSV lead imports, rich-text emails, attachments, delayed delivery, multiple senders, configurable concurrency and rate limits, Elasticsearch search, Slack rate-limit alerts and a live queue dashboard. Deployed on AWS EC2 with Docker Compose, HTTPS and GitHub Actions.
+- Upload the recorded video to Loom or Google Drive and make it viewable by reviewers before placing its URL in the form.
