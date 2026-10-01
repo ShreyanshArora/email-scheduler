@@ -107,6 +107,8 @@ After editing environment values, restart the API and worker. A Slack `redirect_
 
 To configure three independent Ethereal accounts without printing credentials, run `node deploy/provision-ethereal.mjs apps/api/.env` locally (or point it at the private production env on the server), then restart API and worker. Compose defaults to “All senders (rotate)” when more than one sender is configured. Each recipient is assigned the next sender in order, and the Redis hourly limit is keyed per sender. Selecting a future date in Compose switches the action to **Send Later**; clicking outside the picker closes it without discarding the selected time. After submission, the mailbox shows live sent, sending, waiting, and failed counts from the database and a delivery progress bar. The latest campaign remains visible across a page reload until dismissed.
 
+If SMTP logs show `535 Authentication failed`, verify the Ethereal credentials and run `node deploy/rotate-ethereal.mjs apps/api/.env` locally, or run the same script in a one-off worker container against the private `.env.production` on the server. The helper creates and verifies three replacements before changing the env file, preserves old sender-address mappings for queued jobs, and prints no passwords. Restart the API and worker afterward. Messages already marked failed are not resent automatically; review them before retrying to avoid unintended duplicate deliveries.
+
 ## Scheduling, persistence and rate limits
 
 ```text
